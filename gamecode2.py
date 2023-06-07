@@ -55,6 +55,11 @@ class grid():
                 
     def add_walls(self,walls):
         self.walls = walls
+        
+    def remove_walls(self,walls):
+        for w in walls:
+            if w in self.walls:
+                self.walls.remove(w)
     
     def add_player(self,id,x,y,player_data):
         # create a player with reference back to this board
@@ -63,8 +68,6 @@ class grid():
     def astar(self,start):
         pass
 
-    def valid_wall(self,x,y):
-        pass
     
     # for a given position is a move valid
     def valid_move(self,position,move):
@@ -134,7 +137,14 @@ class grid():
             valid = False
         elif p.o == "V" and p.x<=0:
             valid = False
-            # TODO need to add check for 'still a valid path'
+            
+            
+        # TODO need to add check for 'still a valid path'
+        map.add_walls(p)
+        for p in map.players:
+            if not p.path_to_victory():
+                valid = False
+        map.remove_walls(p)
         return valid
     
     def get_valid_neighbours(self,p):
