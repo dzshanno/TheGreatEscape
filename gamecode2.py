@@ -135,6 +135,8 @@ class grid():
             valid = False
         elif new_wall.o == "H" and new_wall.y<=0:
             valid = False
+        elif new_wall.o == "H" and new_wall.x<0:
+            valid = False
         elif new_wall.o == "V" and new_wall.x<=0:
             valid = False
         elif new_wall.o == "V" and new_wall.y<0:
