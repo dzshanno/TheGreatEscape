@@ -3,13 +3,27 @@ import math
 import numpy
 import time
 
+
+class game():
+    pass
+
 class position():
-    def __initi__(self,x,y):
+    def __init__(self,x,y):
         self.x = x
         self.y = y
         
-    def __str___(self):
-        return "["+str(self.x)+","+str(self.y)+"]"
+    def __str__(self):
+        return "P"+str(self.x)+","+str(self.y)+"P"
+
+    def __repr__(self):
+        return "PP"+str(self.x)+","+str(self.y)+"PP"
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+class move():
+    def __init__(self,dx,dy):
+        self.dx = dx
+        self.dy = dy
 
 class cell():
     def __init__ (self,position,data = None):
@@ -18,28 +32,6 @@ class cell():
         
     def __str__(self):
         return str(self.position)+":"+str(self.data)
-    
-    
-        
-class Node():
-    # A node class for A* Pathfinding
-
-    def __init__(self, x,y,parent = None):
-        self.parent = parent
-        self.x = x
-        self.y = y
-        self.g = 0
-        self.h = 0
-        self.f = 0
-
-    def __eq__(self, other):
-        return self.index == other.index
-
-    def __str__(self):
-        return str(self.index)
-
-    def __repr__(self):
-        return str(self.index)
 
 class grid():
     def __init__(self,w : int,h : int,cells : list[cell] = []):
@@ -48,6 +40,9 @@ class grid():
         self.cells = cells
         self.walls = []
         self.players = []
+        
+        self.build_grid()
+        
         
     def __str__(self):
         return str(self.cells[7][1])
@@ -61,9 +56,9 @@ class grid():
     def add_walls(self,walls):
         self.walls = walls
     
-    def add_player(self,x,y,player_data):
+    def add_player(self,id,x,y,player_data):
         # create a player with reference back to this board
-        self.players.append(player(x,y,self,walls))
+        self.players.append(player(id,position(x,y),self,player_data))
                 
     def astar(self,start):
         pass
@@ -71,47 +66,140 @@ class grid():
     def valid_wall(self,x,y):
         pass
     
-    # for a given player is a move valid
-    def valid_move(self,player,move):
+    # for a given position is a move valid
+    def valid_move(self,position,move):
         valid = True
         # is the moved blocked by a wall
         for w in self.walls:
-            if w.o == "V" and move.x ==1 and w.x == player.x+1 and (w.y == player.y or w.y+1 == player.y):
+            if w.o == "V" and move.dx ==1 and w.x == position.x+1 and (w.y == position.y or w.y+1 == position.y):
                 valid = False
-            elif w.o == "V" and move.x == -1 and w.x == player.x and (w.y == player.y or w.y+1 == player.y):
+                print("blocked right", file=sys.stderr, flush=True)
+            elif w.o == "V" and move.dx == -1 and w.x == position.x and (w.y == position.y or w.y+1 == position.y):
                 valid = False
-            elif w.o == "H" and move.y == 1 and w.y == player.y-1 and (w.x == player.x or w.x+1 == player.x):
+                print("blocked left", file=sys.stderr, flush=True)
+            elif w.o == "H" and move.dy == 1 and w.y == position.y+1 and (w.x == position.x or w.x+1 == position.x):
                 valid = False
-            elif w.o == "H" and move.y == -1 and w.y == player.y and (w.x == player.x or w.x+1 == player.x):
+                print("blocked Down", file=sys.stderr, flush=True)
+            elif w.o == "H" and move.dy == -1 and w.y == position.y and (w.x == position.x or w.x+1 == position.x):
                 valid = False
-        if player.x + move.x > 8:
+                print("blocked up", file=sys.stderr, flush=True)
+        if position.x + move.dx > 8:
             valid = False
-        if player.x + move.x <0:
+            print("Right edge", file=sys.stderr, flush=True)
+        if position.x + move.dx <0:
             valid = False
-        if player.y + move.y > 8:
+            print("left edge", file=sys.stderr, flush=True)
+        if position.y + move.dy > 8:
             valid = False
-        if player.y + move.y <0:
+            print("bottom edge", file=sys.stderr, flush=True)
+        if position.y + move.dy <0:
             valid = False
-        #if no paths are available for any player
-        for p in self.players:
-            if p.length_to_win()==--1:
-                valid = False
+            print("top edge", file=sys.stderr, flush=True)
         return valid
     
-        
+    def get_valid_neighbours(self,p):
+        # return a list of positions that are the neighbours of p 'position'
+        neighbours = []
+        # is up valid
+        if self.valid_move(p,move(0,-1)):
+            neighbours.append(position(p.x,p.y-1))
+        #is down valid
+        if self.valid_move(p,move(0,1)):    
+            neighbours.append(position(p.x,p.y+1))
+        # is left valid
+        if self.valid_move(p,move(-1,0)):
+            neighbours.append(position(p.x-1,p.y))
+        # is right valid
+        if self.valid_move(p,move(1,0)):
+            neighbours.append(position(p.x+1,p.y))
 
+        return neighbours
+    
+    def shortest_path(self, node1, node2):
+        path_list = [[node1]]
+        path_index = 0
+        # To keep track of previously visited nodes
+        previous_nodes = [node1]
+        if node1 == node2:
+            return path_list[0]
+            
+        while path_index < len(path_list):
+            current_path = path_list[path_index]
+            last_node = current_path[-1]
+                
+            next_nodes = self.get_valid_neighbours(last_node)
+            
+            # Search goal node
+            if node2 in next_nodes:
+                current_path.append(node2)
+                return current_path
+            # Add new paths
+            for next_node in next_nodes:
+                if not next_node in previous_nodes:
+                    new_path = current_path[:]
+                    new_path.append(next_node)
+                    path_list.append(new_path)
+                    # To avoid backtracking
+                    previous_nodes.append(next_node)
+            # Continue to next path in list
+            path_index += 1
+        # No path is found
+        return []   
 
+    
 
 class player():
-    def __init__ (self,x,y,board,walls = 0,win = []):
-        self.x = x
-        self.y = y
+    def __init__ (self,id,position,board,walls = 0,win = []):
+        self.id =id
+        self.position = position
         self.walls = walls # number of wall elements left
-        self.win = [] # cells that constitute winning the game
+        self.win = [] # list of positions that constitute winning the game
         self.board = board
         
-    def length_to_win():
+    def length_to_win(self):
         pass
+    
+    def add_winning_position(self,position):
+        self.win.append(position)
+        
+    def path_to_victory(self):
+        path_list = [[self.position]]
+        path_index = 0
+        # To keep track of previously visited nodes
+        previous_nodes = [self.position]
+        if self.position in self.win:
+            return path_list[0]
+            
+        while path_index < len(path_list):
+            
+            current_path = path_list[path_index]
+            last_node = current_path[-1]
+            next_nodes = self.board.get_valid_neighbours(last_node)
+            print("last node - "+str(last_node), file=sys.stderr, flush=True)
+            print("next nodes - "+str(next_nodes), file=sys.stderr, flush=True)
+            # Search goal node
+            for w in self.win:  
+                if w in next_nodes:
+                    current_path.append(w)
+                    return current_path
+            # Add new paths
+            for next_node in next_nodes:
+                if not next_node in previous_nodes:
+                    new_path = current_path[:]
+                    new_path.append(next_node)
+                    path_list.append(new_path)
+                    # To avoid backtracking
+                    previous_nodes.append(next_node)
+            # Continue to next path in list
+            if path_index % 10 == 0:
+                ## add time stamp 
+                end = time.process_time()
+                duration = end - start
+                print(output + " :"+str.format('{0:.8f}', duration), file=sys.stderr, flush=True)
+                ## 
+            path_index += 1
+        # No path is found
+        return []   
        
 class wall():
     def __init__ (self,x,y,o):
@@ -122,7 +210,10 @@ class wall():
 
 def all_turns():
     turns = []
-    turns.extend([[0,-1],[0,1],[-1,0],[1,0]])
+    turns.append("UP")
+    turns.append("DOWN")
+    turns.append("RIGHT")
+    turns.append("LEFT")
     for i in range(8):
         for j in range(8):
             for k in ["V","H"]:
@@ -148,7 +239,23 @@ def valid_wall(walls,x,y,o):
             valid = False
     return valid
 
-
+def route_to_moves(route):
+    current = route.pop(0)
+    moves = []
+    for i in route:
+        dx = i.x - current.x
+        dy = i.y - current.y
+        if dx == 0 and dy==1:
+            moves.append("DOWN")
+        elif dx == 0 and dy == -1:
+            moves.append("UP")
+        elif dx     == 1 and dy == 0:
+            moves.append("RIGHT")
+        elif dx == -1 and dy == 0:
+            moves.append("LEFT")
+        else:
+            moves.append("????")
+    return moves
 
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
@@ -173,12 +280,15 @@ while True:
     walls = []
     output = ""
     
+    map = grid(w,h)
+    
+    # get turn data from standard input stream
     for i in range(player_count):
         # x: x-coordinate of the player
         # y: y-coordinate of the player
         # walls_left: number of walls available for the player
         x, y, walls_left = [int(j) for j in input().split()]
-        players.append(player(x,y))
+        map.add_player(id,x,y,walls_left)
     wall_count = int(input())  # number of walls on the board
     for i in range(wall_count):
         inputs = input().split()
@@ -189,23 +299,39 @@ while True:
 
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr, flush=True)
-    me = cell(players[my_id].x,players[my_id].y)
+    me = map.players[my_id]
 
     if my_id==0:
         end = "RIGHT"
+        for i in range(h):
+            map.players[my_id].add_winning_position(position(8,i))
     elif my_id==1:
         end = "LEFT"
+        for i in range(h):
+            map.players[my_id].add_winning_position(position(0,i))
     else:
         end = "BOTTOM"
-       
-    map = grid(w,h)
-    map.build_grid()
+        for i in range(w):
+            map.players[my_id].add_winning_position(position(i,8))
+        
+    
+    
+    
     
     
     # setup for each turn
     map.add_walls(walls)
-   
-    output = "RIGHT" 
+    
+    print("me "+str(me.position), file=sys.stderr, flush=True)
+    
+    next_nodes = me.board.get_valid_neighbours(position(8,2))
+    print("me valid neighbours"+str(next_nodes), file=sys.stderr, flush=True)
+    # turns = all_turns()
+    route = map.players[my_id].path_to_victory()
+    print("route  "+str(route), file=sys.stderr, flush=True)
+    moves = route_to_moves(route)
+    
+    output = moves[0] 
     # meansure the time just beofre printing
     end = time.process_time()
     duration = end - start
