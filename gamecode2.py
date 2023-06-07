@@ -24,7 +24,16 @@ class move():
     def __init__(self,dx,dy):
         self.dx = dx
         self.dy = dy
+        
+    def __str__(self):
+        return "["+str(self.dx)+","+str(self.dy)+"]"
 
+    def __repr__(self):
+        return "["+str(self.dx)+","+str(self.dy)+"]"
+    
+    def __eq__(self,other):
+        return self.dx == other.dx and self.dy == other.dy
+        
 class cell():
     def __init__ (self,position,data = None):
         self.position = position
@@ -42,10 +51,12 @@ class grid():
         self.players = []
         
         self.build_grid()
-        
-        
+   
     def __str__(self):
-        return str(self.cells[7][1])
+        return str("too big to print")
+    
+    def __repr__(self):
+        return str("too big to print")
         
     def build_grid(self):
         self.cells = numpy.empty((w,h),"object")
@@ -74,32 +85,27 @@ class grid():
         # is the moved blocked by a wall
         for w in self.walls:
             if w.o == "V" and move.dx ==1 and w.x == position.x+1 and (w.y == position.y or w.y+1 == position.y):
-                valid = False
-                
+                valid = False              
             elif w.o == "V" and move.dx == -1 and w.x == position.x and (w.y == position.y or w.y+1 == position.y):
                 valid = False
-              
             elif w.o == "H" and move.dy == 1 and w.y == position.y+1 and (w.x == position.x or w.x+1 == position.x):
-                valid = False
-                
+                valid = False     
             elif w.o == "H" and move.dy == -1 and w.y == position.y and (w.x == position.x or w.x+1 == position.x):
                 valid = False
-             
+        
+        #does the move take you out of bounds        
         if position.x + move.dx > 8:
             valid = False
-            
         if position.x + move.dx <0:
             valid = False
-           
         if position.y + move.dy > 8:
             valid = False
-            
         if position.y + move.dy <0:
             valid = False
            
         return valid
     
-    # given a set of walls, is it valid to place another wall with orintation o in position x,y
+    # is it valid to place another wall with orintation on this grid
     def valid_wall(self,new_wall):
         print("wall check..."+ str(new_wall.y), file=sys.stderr, flush=True)
         valid = True
@@ -127,36 +133,34 @@ class grid():
                 #new Horizontal wall crossing a vertical
                 elif w.o=="V" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y-1:
                     valid = False    
-            print("No overlaps "+str(valid), file=sys.stderr, flush=True)
+    
         # check even if no walls
         if new_wall.o == "H" and new_wall.x>=8:
-            valid = False
-        elif new_wall.o == "V" and new_wall.y>=8:
             valid = False
         elif new_wall.o == "H" and new_wall.y<=0:
             valid = False
         elif new_wall.o == "H" and new_wall.x<0:
             valid = False
+        elif new_wall.o == "V" and new_wall.y>=8:
+            valid = False
         elif new_wall.o == "V" and new_wall.x<=0:
             valid = False
         elif new_wall.o == "V" and new_wall.y<0:
             valid = False
-        print("Not out of bounds"+str(valid), file=sys.stderr, flush=True)   
             
         # check for block-in
-        print("walls..."+ str(self.walls), file=sys.stderr, flush=True)
         self.add_wall(new_wall)
-        print("walls..."+ str(self.walls), file=sys.stderr, flush=True)
+        
         for pl in self.players:
             if pl.position.x != -1 and not pl.path_to_victory():
                 valid = False
+        #return things to how they were
         self.remove_wall(new_wall)
-        print("walls..."+ str(self.walls), file=sys.stderr, flush=True)
-        print("Not blocking"+str(valid), file=sys.stderr, flush=True) 
+    
         return valid
     
     def get_valid_neighbours(self,p):
-        # return a list of positions that are the neighbours of p 'position'
+        # return a list of positions that are reachable from p 
         neighbours = []
         # is up valid
         if self.valid_move(p,move(0,-1)):
@@ -173,6 +177,7 @@ class grid():
 
         return neighbours
     
+    # shortest path between two cells on the grid
     def shortest_path(self, node1, node2):
         path_list = [[node1]]
         path_index = 0
@@ -213,10 +218,14 @@ class player():
         self.walls = walls # number of wall elements left
         self.win = [] # list of positions that constitute winning the game
         self.board = board
-        
-    def length_to_win(self):
-        pass
     
+    def __str__(self):
+        return "["+str(self.index)+" @ "+str(self.position)+"]"    
+    
+    def __eq__(self,other):
+        return self.index == other.index
+    
+    # identify positions that count as a win if this player is on them
     def add_winning_position(self,position):
         self.win.append(position)
         
@@ -260,9 +269,17 @@ class wall():
         self.x=x
         self.y=y
         self.o=o
-        
+    
+    def __str__(self):
+        return "["+str(self.x)+","+str(self.y)+","+str(self.o)+"]"
+
+    def __repr__(self):
+        return "["+str(self.x)+","+str(self.y)+","+str(self.o)+"]"
+      
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y and self.o == other.o
+
+
 
 def all_turns():
     turns = []
@@ -276,9 +293,7 @@ def all_turns():
                 turns.append([i,j,k])
     return turns
 
-
-
-
+# convert list of moves to text for the output
 def route_to_moves(route):
     current = route.pop(0)
     moves = []
@@ -295,6 +310,8 @@ def route_to_moves(route):
             moves.append("LEFT")
         else:
             moves.append("????")
+        current.x = i.x
+        current.y = i.y
     return moves
 
 def blocks(current,to):
