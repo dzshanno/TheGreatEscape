@@ -13,10 +13,10 @@ class position():
         self.y = y
         
     def __str__(self):
-        return "P"+str(self.x)+","+str(self.y)+"P"
+        return "["+str(self.x)+","+str(self.y)+"]"
 
     def __repr__(self):
-        return "PP"+str(self.x)+","+str(self.y)+"PP"
+        return "["+str(self.x)+","+str(self.y)+"]"
 
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
@@ -99,22 +99,42 @@ class grid():
     
     # given a set of walls, is it valid to place another wall with orintation o in position x,y
     def valid_wall(self,p):
+        print("wall check..."+ str(p.y), file=sys.stderr, flush=True)
         valid = True
         for w in walls:
+            #idenical walls
             if w.o==p.o and w.x==p.x and w.y==p.y:
                 valid = False
+            #new wall 1 below an existing vertical wall
             elif w.o=="V" and p.o == "V" and w.x==p.x and w.y==p.y+1:
                 valid = False
+            #new wall 1 above an existing vertical wall
+            elif w.o=="V" and p.o == "V" and w.x==p.x and w.y==p.y-1:
+                valid = False       
+            # new wall 1 to the left of a horizonal wall
             elif w.o=="H" and p.o == "H" and w.x==p.x-1 and w.y==p.y:
                 valid = False
-            elif w.o != p.o and w.x==p.x-1 and w.y==p.y+1:
+            # new wall 1 to the right of a horizonal wall
+            elif w.o=="H" and p.o == "H" and w.x==p.x+1 and w.y==p.y:
                 valid = False
-            elif p.o == "H" and p.x>=7:
+                
+            #new vertical wall crossing a horizontal
+            elif w.o=="H" and p.o == "V" and w.x==p.x-1 and w.y==p.y+1:
                 valid = False
-            elif p.o == "V" and p.y>=7:
-                valid = False
-            elif p.o == "H" and p.y<=0:
-                valid = False
+            #new Horizontal wall crossing a vertical
+            elif w.o=="V" and p.o == "H" and w.x==p.x+1 and w.y==p.y-1:
+                valid = False    
+
+        # check even if no walls
+        if p.o == "H" and p.x>=8:
+            valid = False
+        elif p.o == "V" and p.y>=8:
+            valid = False
+        elif p.o == "H" and p.y<=0:
+            valid = False
+        elif p.o == "V" and p.x<=0:
+            valid = False
+            # TODO need to add check for 'still a valid path'
         return valid
     
     def get_valid_neighbours(self,p):
@@ -259,10 +279,26 @@ def route_to_moves(route):
 
 def blocks(current,to):
     blocks=[]
-    if current.x == to.x:
+    # if movement is up
+    if current.x == to.x and current.y > to.y: 
+        blocks.append(wall(current.x,current.y,"H"))
+        blocks.append(wall(current.x+1,current.y,"H"))
+     # if movement is down
+    if current.x == to.x and current.y < to.y: 
         blocks.append(wall(to.x,to.y,"H"))
-    if current.y == to.y:
+        blocks.append(wall(to.x+1,to.y,"H"))
+    # if movement is right
+    if current.y == to.y and current.x < to.x:
         blocks.append(wall(to.x,to.y,"V"))
+        blocks.append(wall(to.x,to.y-1,"V"))
+    # if movement is left
+    if current.y == to.y and current.x > to.x:
+        blocks.append(wall(current.x,current.y,"V"))
+        blocks.append(wall(current.x,current.y-1,"V"))
+    
+    if not map.valid_wall(blocks[1]): blocks.pop(1)
+    if not map.valid_wall(blocks[0]): blocks.pop(0)
+            
     return blocks
 
 # Auto-generated code below aims at helping you parse
@@ -275,8 +311,8 @@ def blocks(current,to):
 w, h, player_count, my_id = [int(i) for i in input().split()]
 
 
+    
 game_turn = 0
-end = ""
 # game loop
 while True:
     # measure the time at the start of a loop
@@ -308,6 +344,9 @@ while True:
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr, flush=True)
     
+    for p in map.players:
+        if p.position.x != -1 and p.index != my_id:
+            oppo_id = p.index
 
     for i in range(h):
         map.players[0].add_winning_position(position(8,i))
@@ -316,21 +355,26 @@ while True:
     if player_count ==3:
         for i in range(w):
             map.players[2].add_winning_position(position(i,8))
+    
+    map.add_walls(walls)
         
     me = map.players[my_id]
     my_dist = len(me.path_to_victory())
 
-    oppo = map.players[0]
+    oppo = map.players[oppo_id]
     oppo_dist = len(oppo.path_to_victory())
        
 
     
    # setup for each turn
-    map.add_walls(walls)
+    
     
     # if me dist >= oppo dist - test block
+    print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
+    print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
+    print(oppo.path_to_victory(), file=sys.stderr, flush=True)
     block = blocks(oppo.position,oppo.path_to_victory()[1])
-    if my_dist >= oppo_dist and map.valid_wall(block[0]):
+    if my_dist >= oppo_dist and block and me.walls != 0:
         output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
     else:
         output = me.next_move() 
