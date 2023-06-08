@@ -4,6 +4,11 @@ import numpy
 import time
 
 
+## TODO make player a sub class of grid?
+## TODO how tyo choose which opponent to go after in a 3 way
+## TODO see how many rounds we can play forwards
+
+
 class game():
     pass
 
@@ -74,6 +79,24 @@ class grid():
     def add_player(self,id,x,y,player_data):
         # create a player with reference back to this board
         self.players.append(player(id,position(x,y),self,player_data))
+        
+    def move_player(self,index,move):
+        pass
+    
+    def revert_player(self,index,old_move):
+        pass
+    
+    # how do we score a grid
+    def grid_score(self):
+        pass 
+        #score = 0
+        #score += a * difference in path to victory
+        #score += b * difference in # of walls left
+        #score += c * somethign i havent thought of yet
+    
+    def is_winner(self):
+        pass
+        return self.players(winner_index)
                 
     def astar(self,start):
         pass
@@ -314,6 +337,7 @@ def route_to_moves(route):
         current.y = i.y
     return moves
 
+
 def blocks(current,to):
     blocks=[]
     # if movement is up
@@ -387,7 +411,6 @@ while True:
 
     for i in range(h):
         map.players[0].add_winning_position(position(8,i))
-    for i in range(h):
         map.players[1].add_winning_position(position(0,i))
     if player_count ==3:
         for i in range(w):
@@ -413,7 +436,7 @@ while True:
     print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
     print(oppo.path_to_victory(), file=sys.stderr, flush=True)
     block = blocks(oppo.position,oppo.path_to_victory()[1])
-    if my_dist >= oppo_dist and block and me.walls != 0:
+    if my_dist > oppo_dist and block and me.walls != 0:
         output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
     else:
         output = me.next_move() 
