@@ -5,12 +5,37 @@ import time
 
 
 ## TODO make player a sub class of grid?
-## TODO how tyo choose which opponent to go after in a 3 way
+## 
 ## TODO see how many rounds we can play forwards
+## add take turn code and valid turn code to allow move and wall type turns
 
+
+## add specifc startegies for top bottom and middle starts
+
+## only add a blocking wall if it makes the path longer
+## or add the block that makes the oppo path longer by the most
+
+## choose oppo who is nearest the finish
+
+## code prediction tree v reactive
+
+## woprk on luring oppo beyond limit of his search tree
+
+# code best_block
+
+## find all walls next to oppo, edge? or other walls or maybe within 1 of other things
+## maybe find all 2 wall segments next to etc. and choose the one that adds the longest
+## 3 wall segments?
 
 class game():
-    pass
+    def __init__(self):
+        self.turn = 0
+        self.w = 9
+        self.h = 9
+        self.board = grid(w,h)
+    
+    def add_players(self,index,pos,player_data):
+        self.board.add_player(index,pos,player_data)
 
 class position():
     def __init__(self,x,y):
@@ -38,7 +63,9 @@ class move():
     
     def __eq__(self,other):
         return self.dx == other.dx and self.dy == other.dy
-        
+    
+
+               
 class cell():
     def __init__ (self,position,data = None):
         self.position = position
@@ -70,33 +97,82 @@ class grid():
                 self.cells[i][j]=cell(i,j)
                 
     def add_wall(self,new_wall):
-        self.walls.append(new_wall)
+        if new_wall not in self.walls:
+            self.walls.append(new_wall)
         
     def remove_wall(self,old_wall):
         if old_wall in self.walls:
             self.walls.remove(old_wall)
     
-    def add_player(self,id,x,y,player_data):
+    def add_player(self,index,pos,player_data):
         # create a player with reference back to this board
-        self.players.append(player(id,position(x,y),self,player_data))
+        self.players.append(player(index,pos,self,player_data))
         
-    def move_player(self,index,move):
-        pass
+    def move_player(self,i,m):
+        self.players[i].move(m)
     
-    def revert_player(self,index,old_move):
-        pass
+    def move_player_back(self,i,m):
+        self.players[i].move_back(m)
     
     # how do we score a grid
-    def grid_score(self):
-        pass 
-        #score = 0
-        #score += a * difference in path to victory
-        #score += b * difference in # of walls left
-        #score += c * somethign i havent thought of yet
+    def grid_score(self,pl):
+        a = -5
+        b = 5
+        c = 1
+        d = -1
+        e = -1
+        pl_dist = len(pl.path_to_victory())
+        oppos = (o for o in self.players if o != pl )
+        oppo_dist = []
+        oppo_walls = []
+        for o in oppos:
+            oppo_dist.append(len(o.path_to_victory()))
+            oppo_walls.append(o.walls)
+        
     
-    def is_winner(self):
-        pass
-        return self.players(winner_index)
+        score = 0
+        # add a * the difference in length of path to victory for the best opponent
+        score += a * pl_dist
+        score += b * min(oppo_dist)
+        score += c * pl.walls
+        score += d * min(oppo_walls) 
+        score += e * self.walls_ahead(pl)
+        return score
+    
+    def walls_ahead(self,pl):
+        wa = 0
+        for w in self.walls:
+            if pl.index == 0:
+                if w.x>pl.position.x:
+                    wa += 1
+            if pl.index == 1:
+                if w.x<pl.position.x:
+                    wa += 1
+            if pl.index == 2:
+                if w.y>pl.position.y:
+                    wa += 1
+        return wa    
+    
+    def walls_behind(self,pl):
+        w = 0
+        for w in self.walls:
+            if pl.index == 0:
+                if w.x<pl.position.x:
+                    wb += 1
+            if pl.index == 1:
+                if w.x>pl.position.x:
+                    wb += 1
+            if pl.index == 2:
+                if w.y<pl.position.y:
+                    wb += 1
+        return wb    
+       
+    def won_by(self):
+        winner = None
+        for p in self.players:
+            if p.won():
+                winner = p
+        return winner
                 
     def astar(self,start):
         pass
@@ -232,10 +308,8 @@ class grid():
         # No path is found
         return []   
 
-    
-
 class player():
-    def __init__ (self,index,position,board,walls = 0,win = []):
+    def __init__ (self,index,position,board,walls = 0):
         self.index = index
         self.position = position
         self.walls = walls # number of wall elements left
@@ -243,10 +317,12 @@ class player():
         self.board = board
     
     def __str__(self):
+        return "["+str(self.index)+" @ "+str(self.position)+"]" 
+    def __repr__(self):
         return "["+str(self.index)+" @ "+str(self.position)+"]"    
     
     def __eq__(self,other):
-        return self.index == other.index
+        return self.index == other.index and self.board==other.board
     
     # identify positions that count as a win if this player is on them
     def add_winning_position(self,position):
@@ -284,9 +360,28 @@ class player():
         return []
     
     def next_move(self):
+        for p in map.players:
+            print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True) 
+            if p.index != self.index:
+                print("p.position"+str(p.position), file=sys.stderr, flush=True) 
+                if p.position == position(1,7):
+                   print("Strategy 1289", file=sys.stderr, flush=True) 
         moves = route_to_moves(self.path_to_victory())
         return moves[0]  
-       
+    
+    def move(self,m):
+        self.position.x += m.dx
+        self.position.y += m.dy
+        
+    def move_back(self,m):
+        self.position.x -= m.dx
+        self.position.y -= m.dy
+    
+    def won(self):
+        if self.position in self.win:
+            return True
+        else:
+            return False
 class wall():
     def __init__ (self,x,y,o):
         self.x=x
@@ -303,17 +398,17 @@ class wall():
         return self.x == other.x and self.y == other.y and self.o == other.o
 
 
-
+# game function not linked to a specific class
 def all_turns():
-    turns = []
-    turns.append("UP")
-    turns.append("DOWN")
-    turns.append("RIGHT")
-    turns.append("LEFT")
-    for i in range(8):
-        for j in range(8):
+    turns = {}
+    turns["UP"] = move(0,-1)
+    turns["DOWN"] = move(0,1)
+    turns["RIGHT"] = move(1,0)
+    turns["LEFT"] = move(-1,0)
+    for i in range(9):
+        for j in range(9):
             for k in ["V","H"]:
-                turns.append([i,j,k])
+                turns[str(i)+str(j)+str(k)] = wall(i,j,k)
     return turns
 
 # convert list of moves to text for the output
@@ -337,7 +432,10 @@ def route_to_moves(route):
         current.y = i.y
     return moves
 
+def text_to_moves(text):
+    return all_turns()[text]
 
+# place a wall to block between to positions
 def blocks(current,to):
     blocks=[]
     # if movement is up
@@ -362,6 +460,100 @@ def blocks(current,to):
             
     return blocks
 
+# This is the minimax function. It considers all 
+# the possible ways the game can go and returns 
+# the value of the board 
+def minimax(grid, depth, player) : 
+    max_depth = 3
+    score = grid.grid_score(player)
+    isMax = False
+    if player.index == my_id: isMax = True
+    # If Maximizer has won the game return his/her 
+    # evaluated score 
+    if (score == 1000) : 
+        return score
+  
+    # If Minimizer has won the game return his/her 
+    # evaluated score 
+    if (score == -1000) :
+        return score
+    
+    if depth == max_depth:
+        return score
+  
+    # If this maximizer's move 
+    if (isMax) :     
+        best = -10000
+  
+        # Traverse all move options 
+        for t in all_turns():
+               
+                # Check if t is valid
+                if is_valid_turn(t) :
+                  
+                    # Make the move 
+                    grid.take_turn(t,player)
+                    # Call minimax recursively and choose 
+                    # the maximum value 
+                    best = max( best, minimax(grid, depth + 1,grid.players[player.index+1 % player_count]))
+  
+                    # Undo the move 
+                    grid.undo_turn(t,player)
+        return best
+  
+    # If this minimizer's move 
+    else :
+        best = 10000
+  
+        # Traverse all move options 
+        for t in all_turns():
+               
+                # Check if t is valid
+                if is_valid_turn(t) :
+                  
+                    # Make the move 
+                    grid.take_turn(t,player)
+                    # Call minimax recursively and choose 
+                    # the maximum value 
+                    best = min( best, minimax(grid, depth + 1,grid.players[player.index+1 % player_count]))
+  
+                    # Undo the move 
+                    grid.undo_turn(t,player)
+        return best
+  
+# This will return the best possible move for the player 
+def findBestMove(grid) : 
+    bestVal = -1000 
+    bestMove = -1 
+  
+    # Traverse all cells, evaluate minimax function for 
+    # all empty cells. And return the cell with optimal 
+    # value. 
+    for t in all_turns():
+          
+            # Check if t is valid
+            if is_valid_turn(t) :
+              
+                # Make the move 
+                grid.take_turn(t,player)
+                # compute evaluation function for this 
+                # move. 
+                moveVal = minimax(grid, 0, False) 
+  
+                # Undo the move 
+                grid.undo_turn(t,player)
+  
+                # If the value of the current move is 
+                # more than the best value, then update 
+                # best/ 
+                if (moveVal > bestVal) :                
+                    bestMove = t
+                    bestVal = moveVal
+  
+    print("The value of the best Move is :", bestVal)
+    print()
+    return bestMove
+
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
@@ -374,6 +566,15 @@ w, h, player_count, my_id = [int(i) for i in input().split()]
 
     
 game_turn = 0
+strategy = ""
+strategy_89 = ["1 7 H","3 7 H","LEFT","5 7 H","LEFT","7 7 V"]
+strategy_12 = ["1 2 H","3 2 H","LEFT","5 2 H","LEFT","7 0 V"]
+
+strategy_12L = ["6 7 H","4 7 H","RIGHT","2 7 H","RIGHT","1 7 V","RIGHT","0 7 H"]  
+strategy_89L = ["6 2 H","4 2 H","RIGHT","2 2 H","RIGHT","1 0 V","RIGHT","0 2 H"]
+
+strategy_45 = ["LEFT","8 6 V","8 2 V","6 8 H","4 8 H","2 8 H","8 4 V","LEFT","LEFT","8 0 V"]
+strategy_45L = ["RIGHT","1 6 V","1 2 V","1 8 H","3 8 H","5 8 H","1 4 V","RIGHT","RIGHT","1 0 V"]
 # game loop
 while True:
     # measure the time at the start of a loop
@@ -393,7 +594,7 @@ while True:
         # y: y-coordinate of the player
         # walls_left: number of walls available for the player
         x, y, walls_left = [int(j) for j in input().split()]
-        map.add_player(i,x,y,walls_left)
+        map.add_player(i,position(x,y),walls_left)
     wall_count = int(input())  # number of walls on the board
     for i in range(wall_count):
         inputs = input().split()
@@ -404,11 +605,13 @@ while True:
 
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr, flush=True)
+    # print("map.players = "+ str(map.players), file=sys.stderr, flush=True)
     
-    for p in map.players:
-        if p.position.x != -1 and p.index != my_id:
-            oppo_id = p.index
-
+    # choose oppo
+    if my_id == 2: oppo_id = 1
+    if my_id == 0: oppo_id = 1
+    if my_id ==1: oppo_id = 0
+    
     for i in range(h):
         map.players[0].add_winning_position(position(8,i))
         map.players[1].add_winning_position(position(0,i))
@@ -428,19 +631,70 @@ while True:
 
     
    # setup for each turn
+    if game_turn <3:
+        if oppo.position in [position(1,7),position(1,8)]:strategy = "89"
+        if oppo.position in [position(1,1),position(1,0)]:strategy = "12"
+        if oppo.position in [position(8,1),position(8,0)]:strategy = "89L" 
+        if oppo.position in [position(8,7),position(8,8)]:strategy = "12L"
+        if oppo.position in [position(8,4),position(8,5)]:strategy = "45L" 
+        if oppo.position in [position(1,4),position(0,4),position(1,5),position(0,5)]:strategy = "45"  
+           
+    if strategy == "89":
+        if strategy_89:
+            output = strategy_89.pop(0)
+        else:
+            strategy = ""
     
+    if strategy == "12":
+        if strategy_12:
+            output = strategy_12.pop(0)
+        else:
+            strategy = ""
+    if strategy == "89L":
+        if strategy_89L:
+            output = strategy_89L.pop(0)
+        else:
+            strategy = ""
+    if strategy == "12L":
+        if strategy_12L:
+            output = strategy_12L.pop(0)
+        else:
+            strategy = ""
+    if strategy == "45":
+        if strategy_45:
+            output = strategy_45.pop(0)
+        else:
+            strategy = ""
     
-    # if me dist >= oppo dist - test block
-    print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
-    print(me.path_to_victory(), file=sys.stderr, flush=True)
-    print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
-    print(oppo.path_to_victory(), file=sys.stderr, flush=True)
-    block = blocks(oppo.position,oppo.path_to_victory()[1])
-    if my_dist > oppo_dist and block and me.walls != 0:
-        output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
-    else:
-        output = me.next_move() 
+    if strategy == "45L":
+        if strategy_45L:
+            output = strategy_45L.pop(0)
+        else:
+            strategy = ""
     
+    if strategy == "":
+       
+        print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
+        # if me dist >= oppo dist - test block
+        print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
+        print(me.path_to_victory(), file=sys.stderr, flush=True)
+        print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
+        print(oppo.path_to_victory(), file=sys.stderr, flush=True)
+        block = blocks(oppo.position,oppo.path_to_victory()[1])
+        
+        
+        
+        ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
+        if my_dist > oppo_dist and block and me.walls != 0:
+            output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
+        else:
+            output = me.next_move() 
+        end = time.process_time()-start
+        print("time for this round"+ str(end), file=sys.stderr, flush=True)
+        
+        
     print(output)
+
+
 
 
