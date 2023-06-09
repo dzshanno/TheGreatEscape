@@ -566,6 +566,8 @@ w, h, player_count, my_id = [int(i) for i in input().split()]
 
     
 game_turn = 0
+
+## replace text with move and wall objects
 strategy = ""
 strategy_89 = ["1 7 H","3 7 H","LEFT","5 7 H","LEFT","7 7 V"]
 strategy_12 = ["1 2 H","3 2 H","LEFT","5 2 H","LEFT","7 0 V"]
