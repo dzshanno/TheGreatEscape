@@ -249,7 +249,7 @@ class grid():
             
         # check for block-in
         self.add_wall(new_wall)
-        
+        print("checking for block in for "+str(new_wall), file=sys.stderr, flush=True)  
         for pl in self.players:
             if pl.position.x != -1 and not pl.path_to_victory():
                 valid = False
@@ -258,8 +258,47 @@ class grid():
     
         return valid
     
+    def touching_walls(self):
+        tw= []
+        for w in self.walls:
+            if w.o == "V":
+                tw.append(wall(w.x-2,w.y,"H"))
+                tw.append(wall(w.x-1,w.y,"H"))
+                tw.append(wall(w.x,w.y,"H"))
+                tw.append(wall(w.x-2,w.y+1,"H"))
+                tw.append(wall(w.x,w.y+1,"H"))
+                tw.append(wall(w.x-2,w.y+2,"H"))
+                tw.append(wall(w.x-1,w.y+2,"H"))
+                tw.append(wall(w.x,w.y+2,"H"))
+                tw.append(wall(w.x,w.y-2,"V"))
+                tw.append(wall(w.x,w.y+2,"V"))
+            if w.o == "H":
+                tw.append(wall(w.x-2,w.y,"H"))
+                tw.append(wall(w.x,w.y,"V"))
+                tw.append(wall(w.x+2,w.y,"H"))
+                tw.append(wall(w.x,w.y-2,"V"))
+                tw.append(wall(w.x+1,w.y-2,"V"))
+                tw.append(wall(w.x+2,w.y-2,"V"))
+                tw.append(wall(w.x+1,w.y,"V"))
+                tw.append(wall(w.x+2,w.y,"V"))
+                tw.append(wall(w.x,w.y-1,"V"))
+                tw.append(wall(w.x+2,w.y-1,"V"))
+          ## TODO deduplicate list      
+        return tw
+    
+    def blocking_players(self):
+        tp = []
+        for pl in self.players:
+            for i in range(self.w-1):
+                tp.append(wall(i,pl.position.y,"V"))
+                tp.append(wall(i,pl.position.y-1,"V"))
+            for j in range(self.h-1):
+                tp.append(wall(pl.position.x,j,"H"))
+                tp.append(wall(pl.position.x-1,j,"H"))
+        return tp
+    
     def get_valid_neighbours(self,p):
-        # return a list of positions that are reachable from p 
+        # return a list of positions that are reachable from position p 
         neighbours = []
         # is up valid
         if self.valid_move(p,move(0,-1)):
@@ -361,11 +400,7 @@ class player():
     
     def next_move(self):
         for p in map.players:
-            print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True) 
-            if p.index != self.index:
-                print("p.position"+str(p.position), file=sys.stderr, flush=True) 
-                if p.position == position(1,7):
-                   print("Strategy 1289", file=sys.stderr, flush=True) 
+            print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True)  
         moves = route_to_moves(self.path_to_victory())
         return moves[0]  
     
@@ -378,10 +413,23 @@ class player():
         self.position.y -= m.dy
     
     def won(self):
+        
         if self.position in self.win:
             return True
         else:
             return False
+    def all_turns(self):
+        turns = []
+        turns.append(move(0,-1))
+        turns.append(move(0,1))
+        turns.append(move(1,0))
+        turns.append(move(-1,0))
+        for i in range(9):
+            for j in range(9):
+                for k in ["V","H"]:
+                    turns.append(wall(i,j,k))
+        return turns
+
 class wall():
     def __init__ (self,x,y,o):
         self.x=x
@@ -397,18 +445,20 @@ class wall():
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y and self.o == other.o
 
-
-# game function not linked to a specific class
+    def to_text(self):
+        return self.__str__()
+        
+        # game function not linked to a specific class
 def all_turns():
-    turns = {}
-    turns["UP"] = move(0,-1)
-    turns["DOWN"] = move(0,1)
-    turns["RIGHT"] = move(1,0)
-    turns["LEFT"] = move(-1,0)
+    turns = []
+    turns.append(move(0,-1))
+    turns.append(move(0,1))
+    turns.append(move(1,0))
+    turns.append(move(-1,0))
     for i in range(9):
         for j in range(9):
             for k in ["V","H"]:
-                turns[str(i)+str(j)+str(k)] = wall(i,j,k)
+                turns.append(wall(i,j,k))
     return turns
 
 # convert list of moves to text for the output
@@ -432,6 +482,32 @@ def route_to_moves(route):
         current.y = i.y
     return moves
 
+def turn_to_text(t):
+    if isinstance(t,move):
+        if t.dx == 0 and t.dy == 1:
+            return "DOWN"
+        elif t.dx == 0 and t.dy == -1:
+            return "UP"
+        elif t.dx == 1:
+            return "RIGHT"
+        elif t.dx == -1:
+            return "LEFT"
+    elif isinstance(t,wall):
+        return str(t.x)+" "+str(t.y)+" "+str(t.o)
+
+def text_to_wall(t):
+    return wall(t[0],t[2],t[3])
+
+def text_to_turn(t):
+    turn = None
+    if t == "DOWN": turn = move(0,1)
+    elif t == "UP": turn = move(0,-1)
+    elif t == "LEFT": turn = move(-1,0)
+    elif t == "RIGTH": turn = move(1,0)
+    else: turn = text_to_wall (t)
+    
+    
+    
 def text_to_moves(text):
     return all_turns()[text]
 
@@ -554,6 +630,52 @@ def findBestMove(grid) :
     print()
     return bestMove
 
+def is_valid_turn(t ,p: player):
+    if isinstance(t,str):
+        t= text_to_turn(t)
+    valid = False
+    if isinstance(t,wall):
+        valid = map.valid_wall(t)
+    if isinstance(t,move):
+        valid = map.valid_move(p.position,t)
+    return valid
+
+def best_turns():
+    turns = []
+    turns.append(move(0,-1))
+    turns.append(move(0,1))
+    turns.append(move(1,0))
+    turns.append(move(-1,0))
+    turns.extend(map.touching_walls())
+    turns.extend(map.blocking_players())
+    print("best Turns = "+ str(turns), file=sys.stderr, flush=True)
+    
+    return turns
+
+def best_move(player):
+    current_score = map.grid_score(me)
+    best_score = -10000
+    best_move = None
+
+    for t in best_turns():
+        print("checking = "+ str(t), file=sys.stderr, flush=True)
+        if is_valid_turn(t,player):
+            print("Valid = "+ str(t), file=sys.stderr, flush=True)
+            if isinstance(t,wall):
+                map.add_wall(t)
+                new_score = map.grid_score(me)
+                if new_score > best_score:
+                    best_score = new_score
+                    best_move = t
+                map.remove_wall(t)
+            if isinstance(t,move):
+                map.move_player(player.index,t)
+                new_score = map.grid_score(me)
+                if new_score > best_score:
+                    best_score = new_score
+                    best_move = t
+                map.move_player_back(player.index,t)
+    return best_move       
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
@@ -572,8 +694,8 @@ strategy = ""
 strategy_89 = ["1 7 H","3 7 H","LEFT","5 7 H","LEFT","7 7 V"]
 strategy_12 = ["1 2 H","3 2 H","LEFT","5 2 H","LEFT","7 0 V"]
 
-strategy_12L = ["6 7 H","4 7 H","RIGHT","2 7 H","RIGHT","1 7 V","RIGHT","0 7 H"]  
-strategy_89L = ["6 2 H","4 2 H","RIGHT","2 2 H","RIGHT","1 0 V","RIGHT","0 2 H"]
+strategy_89L = ["6 7 H","4 7 H","RIGHT","2 7 H","RIGHT","1 7 V","RIGHT","0 7 H"]  
+strategy_12L = ["6 2 H","4 2 H","RIGHT","2 2 H","RIGHT","1 0 V","RIGHT","0 2 H"]
 
 strategy_45 = ["LEFT","8 6 V","8 2 V","6 8 H","4 8 H","2 8 H","8 4 V","LEFT","LEFT","8 0 V"]
 strategy_45L = ["RIGHT","1 6 V","1 2 V","1 8 H","3 8 H","5 8 H","1 4 V","RIGHT","RIGHT","1 0 V"]
@@ -636,8 +758,8 @@ while True:
     if game_turn <3:
         if oppo.position in [position(1,7),position(1,8)]:strategy = "89"
         if oppo.position in [position(1,1),position(1,0)]:strategy = "12"
-        if oppo.position in [position(8,1),position(8,0)]:strategy = "89L" 
-        if oppo.position in [position(8,7),position(8,8)]:strategy = "12L"
+        if oppo.position in [position(8,1),position(8,0)]:strategy = "12L" 
+        if oppo.position in [position(8,7),position(8,8)]:strategy = "89L"
         if oppo.position in [position(8,4),position(8,5)]:strategy = "45L" 
         if oppo.position in [position(1,4),position(0,4),position(1,5),position(0,5)]:strategy = "45"  
            
@@ -659,9 +781,11 @@ while True:
             strategy = ""
     if strategy == "12L":
         if strategy_12L:
-            output = strategy_12L.pop(0)
+            if is_valid_turn(strategy_12L[0],me):
+                output = strategy_12L.pop(0)
         else:
             strategy = ""
+            
     if strategy == "45":
         if strategy_45:
             output = strategy_45.pop(0)
@@ -674,23 +798,24 @@ while True:
         else:
             strategy = ""
     
-    if strategy == "":
-       
+    if strategy == "" or output=="":
+        print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
         print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
         # if me dist >= oppo dist - test block
         print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
         print(me.path_to_victory(), file=sys.stderr, flush=True)
         print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
         print(oppo.path_to_victory(), file=sys.stderr, flush=True)
-        block = blocks(oppo.position,oppo.path_to_victory()[1])
+        #block = blocks(oppo.position,oppo.path_to_victory()[1])
+        #if my_dist > oppo_dist and block and me.walls != 0:
+        #    output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
+        #else:
+        #    output = me.next_move() 
         
-        
+        output = turn_to_text(best_move(me))
         
         ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
-        if my_dist > oppo_dist and block and me.walls != 0:
-            output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
-        else:
-            output = me.next_move() 
+        
         end = time.process_time()-start
         print("time for this round"+ str(end), file=sys.stderr, flush=True)
         
