@@ -64,6 +64,8 @@ class move():
     def __eq__(self,other):
         return self.dx == other.dx and self.dy == other.dy
     
+    def __hash__(self) -> int:
+        return hash(self.dx + (10*self.dy))
 
                
 class cell():
@@ -98,10 +100,12 @@ class grid():
                 
     def add_wall(self,new_wall):
         if new_wall not in self.walls:
+            print("adding wall"+ str(new_wall), file=sys.stderr, flush=True)
             self.walls.append(new_wall)
         
     def remove_wall(self,old_wall):
         if old_wall in self.walls:
+            print("removing wall"+ str(old_wall), file=sys.stderr, flush=True)
             self.walls.remove(old_wall)
     
     def add_player(self,index,pos,player_data):
@@ -122,21 +126,24 @@ class grid():
         d = -1
         e = -1
         pl_dist = len(pl.path_to_victory())
-        oppos = (o for o in self.players if o != pl )
-        oppo_dist = []
-        oppo_walls = []
-        for o in oppos:
-            oppo_dist.append(len(o.path_to_victory()))
-            oppo_walls.append(o.walls)
+        end = time.process_time()-start
+        print("time for this round"+ str(end), file=sys.stderr, flush=True)
+        #oppos = (o for o in self.players if o != pl )
+        #oppo_dist = []
+        #oppo_walls = []
+        #for o in oppos:
+        #    oppo_dist.append(len(o.path_to_victory()))
+        #    oppo_walls.append(o.walls)
         
     
         score = 0
         # add a * the difference in length of path to victory for the best opponent
         score += a * pl_dist
-        score += b * min(oppo_dist)
-        score += c * pl.walls
-        score += d * min(oppo_walls) 
-        score += e * self.walls_ahead(pl)
+        #score += b * min(oppo_dist)
+        #score += c * pl.walls
+        #score += d * min(oppo_walls) 
+        #score += e * self.walls_ahead(pl)
+        print("score after that move is"+ str(score), file=sys.stderr, flush=True)
         return score
     
     def walls_ahead(self,pl):
@@ -206,9 +213,28 @@ class grid():
     
     # is it valid to place another wall with orintation on this grid
     def valid_wall(self,new_wall):
-        print("wall check..."+ str(new_wall.y), file=sys.stderr, flush=True)
+        #print("wall check..."+ str(new_wall.y), file=sys.stderr, flush=True)
         valid = True
-        if len(walls)>0:
+        
+        # check even if no walls
+        if new_wall.o == "H" and new_wall.x>=8:
+            valid = False
+        elif new_wall.o == "H" and new_wall.y<=0:
+            valid = False
+        elif new_wall.o == "H" and new_wall.y>8:
+            valid = False
+        elif new_wall.o == "H" and new_wall.x<0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.y>=8:
+            valid = False
+        elif new_wall.o == "V" and new_wall.x<=0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.y<0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.x>8:
+            valid = False   
+            
+        if valid == True and len(walls)>0:
             for w in walls:
                 #idenical walls
                 if w.o==new_wall.o and w.x==new_wall.x and w.y==new_wall.y:
@@ -225,7 +251,6 @@ class grid():
                 # new wall 1 to the right of a horizonal wall
                 elif w.o=="H" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y:
                     valid = False
-                    
                 #new vertical wall crossing a horizontal
                 elif w.o=="H" and new_wall.o == "V" and w.x==new_wall.x-1 and w.y==new_wall.y+1:
                     valid = False
@@ -233,28 +258,15 @@ class grid():
                 elif w.o=="V" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y-1:
                     valid = False    
     
-        # check even if no walls
-        if new_wall.o == "H" and new_wall.x>=8:
-            valid = False
-        elif new_wall.o == "H" and new_wall.y<=0:
-            valid = False
-        elif new_wall.o == "H" and new_wall.x<0:
-            valid = False
-        elif new_wall.o == "V" and new_wall.y>=8:
-            valid = False
-        elif new_wall.o == "V" and new_wall.x<=0:
-            valid = False
-        elif new_wall.o == "V" and new_wall.y<0:
-            valid = False
-            
-        # check for block-in
-        self.add_wall(new_wall)
-        print("checking for block in for "+str(new_wall), file=sys.stderr, flush=True)  
-        for pl in self.players:
-            if pl.position.x != -1 and not pl.path_to_victory():
-                valid = False
-        #return things to how they were
-        self.remove_wall(new_wall)
+        if valid == True:
+            # check for block-in
+            self.add_wall(new_wall)
+            #print("checking for block in for "+str(new_wall), file=sys.stderr, flush=True)  
+            for pl in self.players:
+                if pl.position.x != -1 and not pl.path_to_victory():
+                    valid = False
+            #return things to how they were
+            self.remove_wall(new_wall)
     
         return valid
     
@@ -289,13 +301,29 @@ class grid():
     def blocking_players(self):
         tp = []
         for pl in self.players:
-            for i in range(self.w-1):
-                tp.append(wall(i,pl.position.y,"V"))
-                tp.append(wall(i,pl.position.y-1,"V"))
-            for j in range(self.h-1):
-                tp.append(wall(pl.position.x,j,"H"))
-                tp.append(wall(pl.position.x-1,j,"H"))
+            if pl != me:
+                for i in range(self.w-1):
+                    tp.append(wall(i,pl.position.y,"V"))
+                    tp.append(wall(i,pl.position.y-1,"V"))
+                for j in range(self.h-1):
+                    tp.append(wall(pl.position.x,j,"H"))
+                    tp.append(wall(pl.position.x-1,j,"H"))
         return tp
+    
+    def touching_players(self):
+        tp = []
+        for pl in self.players:
+            if pl != me:
+                    tp.append(wall(pl.position.x,pl.position.y,"V"))
+                    tp.append(wall(pl.position.x+1,pl.position.y,"V"))
+                    tp.append(wall(pl.position.x,pl.position.y-1,"V"))
+                    tp.append(wall(pl.position.x+1,pl.position.y-1,"V"))
+                    tp.append(wall(pl.position.x,pl.position.y,"H"))
+                    tp.append(wall(pl.position.x-1,pl.position.y,"H"))
+                    tp.append(wall(pl.position.x,pl.position.y+1,"H"))
+                    tp.append(wall(pl.position.x-1,pl.position.y+1,"H"))
+        return tp
+
     
     def get_valid_neighbours(self,p):
         # return a list of positions that are reachable from position p 
@@ -400,8 +428,8 @@ class player():
     
     def next_move(self):
         for p in map.players:
-            print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True)  
-        moves = route_to_moves(self.path_to_victory())
+            #print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True)  
+            moves = route_to_moves(self.path_to_victory())
         return moves[0]  
     
     def move(self,m):
@@ -444,6 +472,9 @@ class wall():
       
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y and self.o == other.o
+    
+    def __hash__(self) -> int:
+        return hash(self.__str__())
 
     def to_text(self):
         return self.__str__()
@@ -647,19 +678,22 @@ def best_turns():
     turns.append(move(1,0))
     turns.append(move(-1,0))
     turns.extend(map.touching_walls())
-    turns.extend(map.blocking_players())
+    turns.extend(map.touching_players())
     print("best Turns = "+ str(turns), file=sys.stderr, flush=True)
     
-    return turns
+    unique_turns = list(set(turns))
+    
+    return unique_turns
 
 def best_move(player):
-    current_score = map.grid_score(me)
+    #current_score = map.grid_score(me)
     best_score = -10000
     best_move = None
 
     for t in best_turns():
         print("checking = "+ str(t), file=sys.stderr, flush=True)
         if is_valid_turn(t,player):
+            
             print("Valid = "+ str(t), file=sys.stderr, flush=True)
             if isinstance(t,wall):
                 map.add_wall(t)
@@ -755,7 +789,7 @@ while True:
 
     
    # setup for each turn
-    if game_turn <3:
+    if game_turn <0:
         if oppo.position in [position(1,7),position(1,8)]:strategy = "89"
         if oppo.position in [position(1,1),position(1,0)]:strategy = "12"
         if oppo.position in [position(8,1),position(8,0)]:strategy = "12L" 
@@ -794,24 +828,30 @@ while True:
     
     if strategy == "45L":
         if strategy_45L:
-            output = strategy_45L.pop(0)
+            if is_valid_turn(strategy_45L[0],me):
+                if strategy_45L[0] == "BEST":
+                    output = turn_to_text(best_move(me))
+                else:
+                    output = strategy_45L.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
     
     if strategy == "" or output=="":
-        print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
-        print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
+        #print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
+        #print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
         # if me dist >= oppo dist - test block
-        print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
-        print(me.path_to_victory(), file=sys.stderr, flush=True)
-        print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
-        print(oppo.path_to_victory(), file=sys.stderr, flush=True)
+        #print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
+        #print(me.path_to_victory(), file=sys.stderr, flush=True)
+        #print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
+        #print(oppo.path_to_victory(), file=sys.stderr, flush=True)
         #block = blocks(oppo.position,oppo.path_to_victory()[1])
         #if my_dist > oppo_dist and block and me.walls != 0:
         #    output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
         #else:
         #    output = me.next_move() 
-        
+        print("best_move", file=sys.stderr, flush=True)
         output = turn_to_text(best_move(me))
         
         ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
