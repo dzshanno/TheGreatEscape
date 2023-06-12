@@ -100,12 +100,10 @@ class grid():
                 
     def add_wall(self,new_wall):
         if new_wall not in self.walls:
-            print("adding wall"+ str(new_wall), file=sys.stderr, flush=True)
             self.walls.append(new_wall)
         
     def remove_wall(self,old_wall):
         if old_wall in self.walls:
-            print("removing wall"+ str(old_wall), file=sys.stderr, flush=True)
             self.walls.remove(old_wall)
     
     def add_player(self,index,pos,player_data):
@@ -125,25 +123,37 @@ class grid():
         c = 1
         d = -1
         e = -1
-        pl_dist = len(pl.path_to_victory())
-        end = time.process_time()-start
-        print("time for this round"+ str(end), file=sys.stderr, flush=True)
-        #oppos = (o for o in self.players if o != pl )
-        #oppo_dist = []
-        #oppo_walls = []
-        #for o in oppos:
-        #    oppo_dist.append(len(o.path_to_victory()))
-        #    oppo_walls.append(o.walls)
-        
-    
         score = 0
+        oppo_dist = 100
+        path = []
+        pl_dist = 100
+        for pl in self.players:
+            path = pl.path_to_victory()
+            new_test = pl.moves_to_victory()
+            
+            print("path is"+ str(len(path)), file=sys.stderr, flush=True)
+            print("mooves is"+ str(new_test), file=sys.stderr, flush=True)
+            if path == []:
+                # wall causes a block in
+                score += -10000
+                break
+            if pl.index == my_id:
+                pl_dist = len(path)
+            elif len(path)<oppo_dist:
+                oppo_dist = len(path)   
+                
+                
+        end = time.process_time()-start
+        #print("time for this round"+ str(end), file=sys.stderr, flush=True)
+        
+        
         # add a * the difference in length of path to victory for the best opponent
-        score += a * pl_dist
-        #score += b * min(oppo_dist)
+        score += (a * pl_dist)
+        score += (b * (oppo_dist-1))
         #score += c * pl.walls
         #score += d * min(oppo_walls) 
         #score += e * self.walls_ahead(pl)
-        print("score after that move is"+ str(score), file=sys.stderr, flush=True)
+        #print("score after that move is"+ str(score), file=sys.stderr, flush=True)
         return score
     
     def walls_ahead(self,pl):
@@ -213,10 +223,17 @@ class grid():
     
     # is it valid to place another wall with orintation on this grid
     def valid_wall(self,new_wall):
-        #print("wall check..."+ str(new_wall.y), file=sys.stderr, flush=True)
         valid = True
-        
-        # check even if no walls
+        valid = self.wall_inbounds(new_wall)
+        if valid:
+            valid = self.no_wall_overlap(new_wall)
+        #if valid:
+        #    self.add_wall(new_wall)
+        #    valid = self.no_block_in(new_wall)
+        #    self.remove_wall(new_wall)   
+        return valid
+    def wall_inbounds(self,new_wall):   
+        valid = True
         if new_wall.o == "H" and new_wall.x>=8:
             valid = False
         elif new_wall.o == "H" and new_wall.y<=0:
@@ -232,9 +249,13 @@ class grid():
         elif new_wall.o == "V" and new_wall.y<0:
             valid = False
         elif new_wall.o == "V" and new_wall.x>8:
-            valid = False   
-            
-        if valid == True and len(walls)>0:
+            valid = False 
+        
+        return valid 
+    
+    def no_wall_overlap(self,new_wall):
+        valid = True        
+        if len(walls)>0:
             for w in walls:
                 #idenical walls
                 if w.o==new_wall.o and w.x==new_wall.x and w.y==new_wall.y:
@@ -256,17 +277,15 @@ class grid():
                     valid = False
                 #new Horizontal wall crossing a vertical
                 elif w.o=="V" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y-1:
-                    valid = False    
+                    valid = False  
+         
+        return valid
     
-        if valid == True:
-            # check for block-in
-            self.add_wall(new_wall)
-            #print("checking for block in for "+str(new_wall), file=sys.stderr, flush=True)  
-            for pl in self.players:
-                if pl.position.x != -1 and not pl.path_to_victory():
-                    valid = False
-            #return things to how they were
-            self.remove_wall(new_wall)
+    def no_block_in(self,new_wall):
+        valid = True
+        for pl in self.players:
+            if pl.position.x != -1 and not pl.path_to_victory():
+                valid = False
     
         return valid
     
@@ -294,8 +313,7 @@ class grid():
                 tw.append(wall(w.x+1,w.y,"V"))
                 tw.append(wall(w.x+2,w.y,"V"))
                 tw.append(wall(w.x,w.y-1,"V"))
-                tw.append(wall(w.x+2,w.y-1,"V"))
-          ## TODO deduplicate list      
+                tw.append(wall(w.x+2,w.y-1,"V"))     
         return tw
     
     def blocking_players(self):
@@ -425,6 +443,25 @@ class player():
             path_index += 1
         # No path is found
         return []
+    
+    
+    def moves_to_victory(self):
+        n= 0
+        previous_nodes = [self.position]
+        queue = [(self.position,n)]
+        while queue:
+            next_node = queue.pop(0)
+            children = self.board.get_valid_neighbours(next_node[0])
+            for c in children:
+                if c in self.win:
+                    return next_node[1]+1 # return current length of path
+                if c not in previous_nodes:
+                    queue.append((c,next_node[1]+1))
+                    previous_nodes.append(c)
+        # no winning path found
+        return -1    
+            
+        
     
     def next_move(self):
         for p in map.players:
@@ -657,8 +694,8 @@ def findBestMove(grid) :
                     bestMove = t
                     bestVal = moveVal
   
-    print("The value of the best Move is :", bestVal)
-    print()
+    #print("The value of the best Move is :", bestVal)
+    #print()
     return bestMove
 
 def is_valid_turn(t ,p: player):
@@ -679,7 +716,6 @@ def best_turns():
     turns.append(move(-1,0))
     turns.extend(map.touching_walls())
     turns.extend(map.touching_players())
-    print("best Turns = "+ str(turns), file=sys.stderr, flush=True)
     
     unique_turns = list(set(turns))
     
@@ -691,10 +727,8 @@ def best_move(player):
     best_move = None
 
     for t in best_turns():
-        print("checking = "+ str(t), file=sys.stderr, flush=True)
         if is_valid_turn(t,player):
-            
-            print("Valid = "+ str(t), file=sys.stderr, flush=True)
+            #print("trying"+ str(t), file=sys.stderr, flush=True)
             if isinstance(t,wall):
                 map.add_wall(t)
                 new_score = map.grid_score(me)
@@ -851,13 +885,13 @@ while True:
         #    output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
         #else:
         #    output = me.next_move() 
-        print("best_move", file=sys.stderr, flush=True)
+        #print("best_move", file=sys.stderr, flush=True)
         output = turn_to_text(best_move(me))
         
         ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
         
         end = time.process_time()-start
-        print("time for this round"+ str(end), file=sys.stderr, flush=True)
+        #print("time for this round"+ str(end), file=sys.stderr, flush=True)
         
         
     print(output)
