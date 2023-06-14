@@ -5,7 +5,7 @@ import time
 
 
 ## TODO make player a sub class of grid?
-## 
+##
 ## TODO see how many rounds we can play forwards
 ## add take turn code and valid turn code to allow move and wall type turns
 
@@ -27,97 +27,127 @@ import time
 ## maybe find all 2 wall segments next to etc. and choose the one that adds the longest
 ## 3 wall segments?
 
-class game():
+
+def set_bit(value, bit):
+    return value | (1 << bit)
+
+
+def reset_bit(value, bit):
+    return value & (~(1 << bit))
+
+
+def check_bit(value, bit):
+    return (value >> bit) & 1
+
+
+class state:
+    def __init__(self):
+        self.con = [0, 0, 0, 0]  # 4 81 bit integers up/right/down/left
+        self.pl_pos = [0, 0, 0]
+        self.pl_wall = [0, 0, 0]
+
+    def set_wall(self, position, type):
+        pos = position.x + (position.y * w)
+        if type == "H":
+            self.con[0] = reset_bit(self.con[0], pos)
+            self.con[0] = reset_bit(self.con[0], pos + 1)
+            self.con[2] = reset_bit(self.con[2], pos - w)
+            self.con[2] = reset_bit(self.con[2], pos - w + 1)
+        else:
+            self.con[1] = reset_bit(self.con[1], pos - 1)
+            self.con[1] = reset_bit(self.con[1], pos + w - 1)
+            self.con[3] = reset_bit(self.con[3], pos)
+            self.con[3] = reset_bit(self.con[3], pos + w)
+
+
+class game:
     def __init__(self):
         self.turn = 0
         self.w = 9
         self.h = 9
-        self.board = grid(w,h)
-    
-    def add_players(self,index,pos,player_data):
-        self.board.add_player(index,pos,player_data)
+        self.board = grid(w, h)
+        self.state = state()
+        self.pl_won = [0, 0, 0]
+        self.depth = 0
 
-class position():
-    def __init__(self,x,y):
-        self.x = x
-        self.y = y
-        
-    def __str__(self):
-        return "["+str(self.x)+","+str(self.y)+"]"
+        # setup all connections
+        for i in range(4):
+            self.state.con[i] = (1 << 81) - 1
 
-    def __repr__(self):
-        return "["+str(self.x)+","+str(self.y)+"]"
+        # remove edges
 
-    def __eq__(self, other):
-        return self.x == other.x and self.y == other.y
-class move():
-    def __init__(self,dx,dy):
-        self.dx = dx
-        self.dy = dy
-        
-    def __str__(self):
-        return "["+str(self.dx)+","+str(self.dy)+"]"
-
-    def __repr__(self):
-        return "["+str(self.dx)+","+str(self.dy)+"]"
-    
-    def __eq__(self,other):
-        return self.dx == other.dx and self.dy == other.dy
-    
-    def __hash__(self) -> int:
-        return hash(self.dx + (10*self.dy))
-
-               
-class cell():
-    def __init__ (self,position,data = None):
-        self.position = position
-        self.data = data
-        
-    def __str__(self):
-        return str(self.position)+":"+str(self.data)
-
-class grid():
-    def __init__(self,w : int,h : int,cells : list[cell] = []):
-        self.w = w
-        self.h = h
-        self.cells = cells
-        self.walls = []
-        self.players = []
-        
-        self.build_grid()
-   
-    def __str__(self):
-        return str("too big to print")
-    
-    def __repr__(self):
-        return str("too big to print")
-        
-    def build_grid(self):
-        self.cells = numpy.empty((w,h),"object")
         for i in range(w):
-            for j in range(h):
-                self.cells[i][j]=cell(i,j)
-                
-    def add_wall(self,new_wall):
-        if new_wall not in self.walls:
-            self.walls.append(new_wall)
-        
-    def remove_wall(self,old_wall):
-        if old_wall in self.walls:
-            self.walls.remove(old_wall)
-    
-    def add_player(self,index,pos,player_data):
-        # create a player with reference back to this board
-        self.players.append(player(index,pos,self,player_data))
-        
-    def move_player(self,i,m):
-        self.players[i].move(m)
-    
-    def move_player_back(self,i,m):
-        self.players[i].move_back(m)
-    
-    # how do we score a grid
-    def grid_score(self,pl):
+            self.state.con[0] = reset_bit(self.state.con[0], i)
+            self.state.con[1] = reset_bit(self.state.con[1], i * 9 + 8)
+            self.state.con[2] = reset_bit(self.state.con[2], i + 9 * (8))
+            self.state.con[3] = reset_bit(self.state.con[3], i * 9)
+        # prepare win-condition masks
+        for i in range(w):
+            self.pl_won[0] = set_bit(self.pl_won[0], (i * 9 + 8))
+            self.pl_won[1] = set_bit(self.pl_won[1], i * 9)
+            self.pl_won[2] = set_bit(self.pl_won[2], (8) * 9 + i)
+
+    def valid_move(self, position, move):
+        pos = position.x + (9 * position.y)
+        if move.dy == -1 and check_bit(self.state.con[0], pos):
+            return True
+        elif move.dx == 1 and check_bit(self.state.con[1], pos):
+            return True
+        elif move.dy == 1 and check_bit(self.state.con[2], pos):
+            return True
+        elif move.dx == -1 and check_bit(self.state.con[3], pos):
+            return True
+        else:
+            return False
+
+    def get_path_len(self, pl):
+        pos = self.state.pl_pos[pl.index]
+        # check for win condition
+        if check_bit(self.pl_won[pl.index], pos):
+            return 0
+        self.depth = +1
+        win = self.pl_won[pl.index]
+        cur = 1 << pos
+        visits = cur
+        dist = 0
+        while True:
+            if cur == 0:
+                return -1
+
+            if (cur & win) > 0:
+                return dist
+
+            cur = (
+                cur & self.state.con[0] >> w
+                | (cur & self.state.con[1]) << 1
+                | (cur & self.state.con[2]) << w
+                | (cur & self.state.con[3]) >> 1
+            )
+            cur &= ~visits
+            visits |= cur
+            dist += 1
+        return -1
+
+    def add_players(self):
+        self.state.pl_pos[0] = map.players[0].position.x + (
+            map.players[0].position.y * w
+        )
+        self.state.pl_pos[1] = map.players[1].position.x + (
+            map.players[1].position.y * w
+        )
+        if player_count == 3:
+            self.state.pl_pos[2] = map.players[2].position.x + (
+                map.players[2].position.y * w
+            )
+
+    def add_player(self, pl):
+        self.state.pl_pos[pl.index] = pl.x + pl.y * w
+        self.state.pl_wall[pl.index] = pl.walls
+
+    def best_move(self, player):
+        pass
+
+    def game_score(self, pl):
         a = -5
         b = 5
         c = 1
@@ -128,239 +158,499 @@ class grid():
         path = []
         pl_dist = 100
         for pl in self.players:
-            path = pl.path_to_victory()
-            new_test = pl.moves_to_victory()
-            
-            print("path is"+ str(len(path)), file=sys.stderr, flush=True)
-            print("mooves is"+ str(new_test), file=sys.stderr, flush=True)
-            if path == []:
+            dist = self.get_path_len(pl)
+            if dist == -1:
                 # wall causes a block in
                 score += -10000
                 break
             if pl.index == my_id:
-                pl_dist = len(path)
-            elif len(path)<oppo_dist:
-                oppo_dist = len(path)   
-                
-                
-        end = time.process_time()-start
-        #print("time for this round"+ str(end), file=sys.stderr, flush=True)
-        
-        
+                pl_dist = dist
+            elif len(path) < oppo_dist:
+                oppo_dist = dist
+
         # add a * the difference in length of path to victory for the best opponent
-        score += (a * pl_dist)
-        score += (b * (oppo_dist-1))
-        #score += c * pl.walls
-        #score += d * min(oppo_walls) 
-        #score += e * self.walls_ahead(pl)
-        #print("score after that move is"+ str(score), file=sys.stderr, flush=True)
+        score += a * pl_dist
+        score += b * (oppo_dist - 1)
+        # score += c * pl.walls
+        # score += d * min(oppo_walls)
+        # score += e * self.walls_ahead(pl)
+        # print("score after that move is"+ str(score), file=sys.stderr, flush=True)
         return score
-    
-    def walls_ahead(self,pl):
+
+
+class position:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __str__(self):
+        return "[" + str(self.x) + "," + str(self.y) + "]"
+
+    def __repr__(self):
+        return "[" + str(self.x) + "," + str(self.y) + "]"
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+
+class move:
+    def __init__(self, dx, dy):
+        self.dx = dx
+        self.dy = dy
+
+    def __str__(self):
+        return "[" + str(self.dx) + "," + str(self.dy) + "]"
+
+    def __repr__(self):
+        return "[" + str(self.dx) + "," + str(self.dy) + "]"
+
+    def __eq__(self, other):
+        return self.dx == other.dx and self.dy == other.dy
+
+    def __hash__(self) -> int:
+        return hash(self.dx + (10 * self.dy))
+
+
+class cell:
+    def __init__(self, position, data=None, valid_moves: list[position] = []):
+        self.position = position
+        self.data = data
+        self.valid_moves = valid_moves
+
+    def __str__(self):
+        return str(self.position) + ":" + str(self.data)
+
+
+class grid:
+    def __init__(self, w: int, h: int, cells: list[cell] = []):
+        self.w = w
+        self.h = h
+        self.cells = cells
+        self.walls = []
+        self.players = []
+
+        self.build_grid()
+
+    def __str__(self):
+        return str("too big to print")
+
+    def __repr__(self):
+        return str("too big to print")
+
+    def build_grid(self):
+        self.cells = numpy.empty((w, h), "object")
+        for i in range(w):
+            for j in range(h):
+                self.cells[i][j] = cell(i, j)
+
+    def add_wall(self, new_wall):
+        if new_wall not in self.walls:
+            self.walls.append(new_wall)
+
+            self.set_valid_neighbours(position(new_wall.x, new_wall.y))
+            if new_wall.o == "V":
+                self.set_valid_neighbours(position(new_wall.x - 1, new_wall.y))
+                self.set_valid_neighbours(position(new_wall.x - 1, new_wall.y + 1))
+                self.set_valid_neighbours(position(new_wall.x, new_wall.y + 1))
+            else:
+                self.set_valid_neighbours(position(new_wall.x, new_wall.y - 1))
+                self.set_valid_neighbours(position(new_wall.x + 1, new_wall.y - 1))
+                self.set_valid_neighbours(position(new_wall.x + 1, new_wall.y))
+
+    def remove_wall(self, old_wall):
+        if old_wall in self.walls:
+            self.walls.remove(old_wall)
+            self.set_valid_neighbours(position(old_wall.x, old_wall.y))
+            if old_wall.o == "V":
+                self.set_valid_neighbours(position(old_wall.x - 1, old_wall.y))
+                self.set_valid_neighbours(position(old_wall.x - 1, old_wall.y + 1))
+                self.set_valid_neighbours(position(old_wall.x, old_wall.y + 1))
+            else:
+                self.set_valid_neighbours(position(old_wall.x, old_wall.y - 1))
+                self.set_valid_neighbours(position(old_wall.x + 1, old_wall.y - 1))
+                self.set_valid_neighbours(position(old_wall.x + 1, old_wall.y))
+
+    def add_player(self, index, pos, player_data):
+        # create a player with reference back to this board
+        self.players.append(player(index, pos, self, player_data))
+
+    def move_player(self, i, m):
+        self.players[i].move(m)
+
+    def move_player_back(self, i, m):
+        self.players[i].move_back(m)
+
+    # how do we score a grid
+    def grid_score(self, pl):
+        a = -5
+        b = 5
+        c = 1
+        d = -1
+        e = -1
+        score = 0
+        oppo_dist = 100
+        path = []
+        pl_dist = 100
+        for pl in self.players:
+            dist = pl.moves_to_victory()
+            if dist == -1:
+                # wall causes a block in
+                score += -10000
+                break
+            if pl.index == my_id:
+                pl_dist = dist
+            elif len(path) < oppo_dist:
+                oppo_dist = dist
+
+        # add a * the difference in length of path to victory for the best opponent
+        score += a * pl_dist
+        score += b * (oppo_dist - 1)
+        # score += c * pl.walls
+        # score += d * min(oppo_walls)
+        # score += e * self.walls_ahead(pl)
+        # print("score after that move is"+ str(score), file=sys.stderr, flush=True)
+        return score
+
+    def walls_ahead(self, pl):
         wa = 0
         for w in self.walls:
             if pl.index == 0:
-                if w.x>pl.position.x:
+                if w.x > pl.position.x:
                     wa += 1
             if pl.index == 1:
-                if w.x<pl.position.x:
+                if w.x < pl.position.x:
                     wa += 1
             if pl.index == 2:
-                if w.y>pl.position.y:
+                if w.y > pl.position.y:
                     wa += 1
-        return wa    
-    
-    def walls_behind(self,pl):
+        return wa
+
+    def walls_behind(self, pl):
         w = 0
         for w in self.walls:
             if pl.index == 0:
-                if w.x<pl.position.x:
+                if w.x < pl.position.x:
                     wb += 1
             if pl.index == 1:
-                if w.x>pl.position.x:
+                if w.x > pl.position.x:
                     wb += 1
             if pl.index == 2:
-                if w.y<pl.position.y:
+                if w.y < pl.position.y:
                     wb += 1
-        return wb    
-       
+        return wb
+
     def won_by(self):
         winner = None
         for p in self.players:
             if p.won():
                 winner = p
         return winner
-                
-    def astar(self,start):
+
+    def astar(self, start):
         pass
 
-    
     # for a given position is a move valid
-    def valid_move(self,position,move):
+    def valid_move(self, position, move):
         valid = True
         # is the moved blocked by a wall
-        for w in self.walls:
-            if w.o == "V" and move.dx ==1 and w.x == position.x+1 and (w.y == position.y or w.y+1 == position.y):
-                valid = False              
-            elif w.o == "V" and move.dx == -1 and w.x == position.x and (w.y == position.y or w.y+1 == position.y):
-                valid = False
-            elif w.o == "H" and move.dy == 1 and w.y == position.y+1 and (w.x == position.x or w.x+1 == position.x):
-                valid = False     
-            elif w.o == "H" and move.dy == -1 and w.y == position.y and (w.x == position.x or w.x+1 == position.x):
-                valid = False
-        
-        #does the move take you out of bounds        
+        if len(self.walls) < 1:
+            for w in self.walls:
+                if (
+                    w.o == "V"
+                    and move.dx == 1
+                    and w.x == position.x + 1
+                    and (w.y == position.y or w.y + 1 == position.y)
+                ):
+                    return False
+                elif (
+                    w.o == "V"
+                    and move.dx == -1
+                    and w.x == position.x
+                    and (w.y == position.y or w.y + 1 == position.y)
+                ):
+                    return False
+                elif (
+                    w.o == "H"
+                    and move.dy == 1
+                    and w.y == position.y + 1
+                    and (w.x == position.x or w.x + 1 == position.x)
+                ):
+                    return False
+                elif (
+                    w.o == "H"
+                    and move.dy == -1
+                    and w.y == position.y
+                    and (w.x == position.x or w.x + 1 == position.x)
+                ):
+                    return False
+        else:
+            print("walls :" + str(self.walls), file=sys.stderr, flush=True)
+            print(
+                " is [2,0,V] in walls" + str(wall(2, 0, "V") in self.walls),
+                file=sys.stderr,
+                flush=True,
+            )
+            if move.dx == 1 and (
+                wall(position.x + 1, position.y, "H") in self.walls
+                or (wall(position.x + 1, position.y - 1, "V") in self.walls)
+            ):
+                return False
+            if move.dx == -1 and (
+                wall(position.x, position.y, "H") in self.walls
+                or (wall(position.x, position.y - 1, "V") in self.walls)
+            ):
+                return False
+            if move.dy == 1 and (
+                wall(position.x, position.y + 1, "H") in self.walls
+                or (wall(position.x - 1, position.y + 1, "H") in self.walls)
+            ):
+                return False
+            if move.dy == -1 and (
+                wall(position.x, position.y, "H") in self.walls
+                or (wall(position.x - 1, position.y, "H") in self.walls)
+            ):
+                return False
+
+        # does the move take you out of bounds
         if position.x + move.dx > 8:
-            valid = False
-        if position.x + move.dx <0:
-            valid = False
+            return False
+        if position.x + move.dx < 0:
+            return False
         if position.y + move.dy > 8:
-            valid = False
-        if position.y + move.dy <0:
-            valid = False
-           
+            return False
+        if position.y + move.dy < 0:
+            return False
+
         return valid
-    
+
+    def valid_move2(self, po, move):
+        if (
+            position(po.x + move.dx, po.y + move.dy)
+            in self.cells[po.x][po.y].valid_moves
+        ):
+            return True
+        else:
+            return False
+
     # is it valid to place another wall with orintation on this grid
-    def valid_wall(self,new_wall):
+    def valid_wall(self, new_wall):
         valid = True
         valid = self.wall_inbounds(new_wall)
         if valid:
             valid = self.no_wall_overlap(new_wall)
-        #if valid:
+        # if valid:
         #    self.add_wall(new_wall)
         #    valid = self.no_block_in(new_wall)
-        #    self.remove_wall(new_wall)   
+        #    self.remove_wall(new_wall)
         return valid
-    def wall_inbounds(self,new_wall):   
+
+    def wall_inbounds(self, new_wall):
         valid = True
-        if new_wall.o == "H" and new_wall.x>=8:
+        if new_wall.o == "H" and new_wall.x >= 8:
             valid = False
-        elif new_wall.o == "H" and new_wall.y<=0:
+        elif new_wall.o == "H" and new_wall.y <= 0:
             valid = False
-        elif new_wall.o == "H" and new_wall.y>8:
+        elif new_wall.o == "H" and new_wall.y > 8:
             valid = False
-        elif new_wall.o == "H" and new_wall.x<0:
+        elif new_wall.o == "H" and new_wall.x < 0:
             valid = False
-        elif new_wall.o == "V" and new_wall.y>=8:
+        elif new_wall.o == "V" and new_wall.y >= 8:
             valid = False
-        elif new_wall.o == "V" and new_wall.x<=0:
+        elif new_wall.o == "V" and new_wall.x <= 0:
             valid = False
-        elif new_wall.o == "V" and new_wall.y<0:
+        elif new_wall.o == "V" and new_wall.y < 0:
             valid = False
-        elif new_wall.o == "V" and new_wall.x>8:
-            valid = False 
-        
-        return valid 
-    
-    def no_wall_overlap(self,new_wall):
-        valid = True        
-        if len(walls)>0:
+        elif new_wall.o == "V" and new_wall.x > 8:
+            valid = False
+
+        return valid
+
+    def no_wall_overlap(self, new_wall):
+        valid = True
+        if len(walls) > 0:
             for w in walls:
-                #idenical walls
-                if w.o==new_wall.o and w.x==new_wall.x and w.y==new_wall.y:
+                # idenical walls
+                if w.o == new_wall.o and w.x == new_wall.x and w.y == new_wall.y:
                     valid = False
-                #new wall 1 below an existing vertical wall
-                elif w.o=="V" and new_wall.o == "V" and w.x==new_wall.x and w.y==new_wall.y+1:
+                # new wall 1 below an existing vertical wall
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x
+                    and w.y == new_wall.y + 1
+                ):
                     valid = False
-                #new wall 1 above an existing vertical wall
-                elif w.o=="V" and new_wall.o == "V" and w.x==new_wall.x and w.y==new_wall.y-1:
-                    valid = False       
+                # new wall 1 above an existing vertical wall
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x
+                    and w.y == new_wall.y - 1
+                ):
+                    valid = False
                 # new wall 1 to the left of a horizonal wall
-                elif w.o=="H" and new_wall.o == "H" and w.x==new_wall.x-1 and w.y==new_wall.y:
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x - 1
+                    and w.y == new_wall.y
+                ):
                     valid = False
                 # new wall 1 to the right of a horizonal wall
-                elif w.o=="H" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y:
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x + 1
+                    and w.y == new_wall.y
+                ):
                     valid = False
-                #new vertical wall crossing a horizontal
-                elif w.o=="H" and new_wall.o == "V" and w.x==new_wall.x-1 and w.y==new_wall.y+1:
+                # new vertical wall crossing a horizontal
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x - 1
+                    and w.y == new_wall.y + 1
+                ):
                     valid = False
-                #new Horizontal wall crossing a vertical
-                elif w.o=="V" and new_wall.o == "H" and w.x==new_wall.x+1 and w.y==new_wall.y-1:
-                    valid = False  
-         
+                # new Horizontal wall crossing a vertical
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x + 1
+                    and w.y == new_wall.y - 1
+                ):
+                    valid = False
+
         return valid
-    
-    def no_block_in(self,new_wall):
+
+    def no_block_in(self, new_wall):
         valid = True
         for pl in self.players:
-            if pl.position.x != -1 and not pl.path_to_victory():
+            if pl.position.x != -1 and pl.moves_to_victory() == -1:
                 valid = False
-    
+
         return valid
-    
+
+    def not_out_of_bounds(self, po, mo):
+        # does the move take you out of bounds
+        if po.x + mo.dx > self.w - 1:
+            return False
+        if po.x + mo.dx < 0:
+            return False
+        if po.y + mo.dy > self.h - 1:
+            return False
+        if po.y + mo.dy < 0:
+            return False
+        return True
+
     def touching_walls(self):
-        tw= []
+        tw = []
         for w in self.walls:
             if w.o == "V":
-                tw.append(wall(w.x-2,w.y,"H"))
-                tw.append(wall(w.x-1,w.y,"H"))
-                tw.append(wall(w.x,w.y,"H"))
-                tw.append(wall(w.x-2,w.y+1,"H"))
-                tw.append(wall(w.x,w.y+1,"H"))
-                tw.append(wall(w.x-2,w.y+2,"H"))
-                tw.append(wall(w.x-1,w.y+2,"H"))
-                tw.append(wall(w.x,w.y+2,"H"))
-                tw.append(wall(w.x,w.y-2,"V"))
-                tw.append(wall(w.x,w.y+2,"V"))
+                tw.append(wall(w.x - 2, w.y, "H"))
+                tw.append(wall(w.x - 1, w.y, "H"))
+                tw.append(wall(w.x, w.y, "H"))
+                tw.append(wall(w.x - 2, w.y + 1, "H"))
+                tw.append(wall(w.x, w.y + 1, "H"))
+                tw.append(wall(w.x - 2, w.y + 2, "H"))
+                tw.append(wall(w.x - 1, w.y + 2, "H"))
+                tw.append(wall(w.x, w.y + 2, "H"))
+                tw.append(wall(w.x, w.y - 2, "V"))
+                tw.append(wall(w.x, w.y + 2, "V"))
             if w.o == "H":
-                tw.append(wall(w.x-2,w.y,"H"))
-                tw.append(wall(w.x,w.y,"V"))
-                tw.append(wall(w.x+2,w.y,"H"))
-                tw.append(wall(w.x,w.y-2,"V"))
-                tw.append(wall(w.x+1,w.y-2,"V"))
-                tw.append(wall(w.x+2,w.y-2,"V"))
-                tw.append(wall(w.x+1,w.y,"V"))
-                tw.append(wall(w.x+2,w.y,"V"))
-                tw.append(wall(w.x,w.y-1,"V"))
-                tw.append(wall(w.x+2,w.y-1,"V"))     
+                tw.append(wall(w.x - 2, w.y, "H"))
+                tw.append(wall(w.x, w.y, "V"))
+                tw.append(wall(w.x + 2, w.y, "H"))
+                tw.append(wall(w.x, w.y - 2, "V"))
+                tw.append(wall(w.x + 1, w.y - 2, "V"))
+                tw.append(wall(w.x + 2, w.y - 2, "V"))
+                tw.append(wall(w.x + 1, w.y, "V"))
+                tw.append(wall(w.x + 2, w.y, "V"))
+                tw.append(wall(w.x, w.y - 1, "V"))
+                tw.append(wall(w.x + 2, w.y - 1, "V"))
         return tw
-    
+
     def blocking_players(self):
         tp = []
         for pl in self.players:
             if pl != me:
-                for i in range(self.w-1):
-                    tp.append(wall(i,pl.position.y,"V"))
-                    tp.append(wall(i,pl.position.y-1,"V"))
-                for j in range(self.h-1):
-                    tp.append(wall(pl.position.x,j,"H"))
-                    tp.append(wall(pl.position.x-1,j,"H"))
+                for i in range(self.w - 1):
+                    tp.append(wall(i, pl.position.y, "V"))
+                    tp.append(wall(i, pl.position.y - 1, "V"))
+                for j in range(self.h - 1):
+                    tp.append(wall(pl.position.x, j, "H"))
+                    tp.append(wall(pl.position.x - 1, j, "H"))
         return tp
-    
+
     def touching_players(self):
         tp = []
         for pl in self.players:
             if pl != me:
-                    tp.append(wall(pl.position.x,pl.position.y,"V"))
-                    tp.append(wall(pl.position.x+1,pl.position.y,"V"))
-                    tp.append(wall(pl.position.x,pl.position.y-1,"V"))
-                    tp.append(wall(pl.position.x+1,pl.position.y-1,"V"))
-                    tp.append(wall(pl.position.x,pl.position.y,"H"))
-                    tp.append(wall(pl.position.x-1,pl.position.y,"H"))
-                    tp.append(wall(pl.position.x,pl.position.y+1,"H"))
-                    tp.append(wall(pl.position.x-1,pl.position.y+1,"H"))
+                tp.append(wall(pl.position.x, pl.position.y, "V"))
+                tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
+                tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
+                tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
+                tp.append(wall(pl.position.x, pl.position.y, "H"))
+                tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
+                tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
+                tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
         return tp
 
-    
-    def get_valid_neighbours(self,p):
-        # return a list of positions that are reachable from position p 
+    def set_valid_neighbours(self, p=None):
+        # add a list of moves accessible cells from all position or just one if specified from position p
+
+        if not p:
+            for i in range(h):
+                for j in range(w):
+                    p = position(j, i)
+                    self.cells[p.x][p.y].valid_moves = []
+                    # is up valid
+                    if self.not_out_of_bounds(p, move(0, -1)):
+                        self.cells[p.x][p.y].valid_moves.append(position(p.x, p.y - 1))
+                    # is down valid
+                    if self.not_out_of_bounds(p, move(0, 1)):
+                        self.cells[p.x][p.y].valid_moves.append(position(p.x, p.y + 1))
+                    # is left valid
+                    if self.not_out_of_bounds(p, move(-1, 0)):
+                        self.cells[p.x][p.y].valid_moves.append(position(p.x - 1, p.y))
+                    # is right valid
+                    if self.not_out_of_bounds(p, move(1, 0)):
+                        self.cells[p.x][p.y].valid_moves.append(position(p.x + 1, p.y))
+        else:
+            self.cells[p.x][p.y].valid_moves = []
+            if self.valid_move2(p, move(0, -1)):
+                self.cells[p.x][p.y].valid_moves.append(position(p.x, p.y - 1))
+            # is down valid
+            if self.valid_move2(p, move(0, 1)):
+                self.cells[p.x][p.y].valid_moves.append(position(p.x, p.y + 1))
+            # is left valid
+            if self.valid_move2(p, move(-1, 0)):
+                self.cells[p.x][p.y].valid_moves.append(position(p.x - 1, p.y))
+            # is right valid
+            if self.valid_move2(p, move(1, 0)):
+                self.cells[p.x][p.y].valid_moves.append(position(p.x + 1, p.y))
+
+    def get_valid_moves(self, p):
+        return self.cells[p.x][p.y].valid_moves
+
+    def get_valid_neighbours(self, p):
+        # return a list of positions that are reachable from position p
         neighbours = []
         # is up valid
-        if self.valid_move(p,move(0,-1)):
-            neighbours.append(position(p.x,p.y-1))
-        #is down valid
-        if self.valid_move(p,move(0,1)):    
-            neighbours.append(position(p.x,p.y+1))
+        if self.valid_move(p, move(0, -1)):
+            neighbours.append(position(p.x, p.y - 1))
+        # is down valid
+        if self.valid_move(p, move(0, 1)):
+            neighbours.append(position(p.x, p.y + 1))
         # is left valid
-        if self.valid_move(p,move(-1,0)):
-            neighbours.append(position(p.x-1,p.y))
+        if self.valid_move(p, move(-1, 0)):
+            neighbours.append(position(p.x - 1, p.y))
         # is right valid
-        if self.valid_move(p,move(1,0)):
-            neighbours.append(position(p.x+1,p.y))
+        if self.valid_move(p, move(1, 0)):
+            neighbours.append(position(p.x + 1, p.y))
 
         return neighbours
-    
+
     # shortest path between two cells on the grid
     def shortest_path(self, node1, node2):
         path_list = [[node1]]
@@ -369,13 +659,13 @@ class grid():
         previous_nodes = [node1]
         if node1 == node2:
             return path_list[0]
-            
+
         while path_index < len(path_list):
             current_path = path_list[path_index]
             last_node = current_path[-1]
-                
+
             next_nodes = self.get_valid_neighbours(last_node)
-            
+
             # Search goal node
             if node2 in next_nodes:
                 current_path.append(node2)
@@ -391,28 +681,30 @@ class grid():
             # Continue to next path in list
             path_index += 1
         # No path is found
-        return []   
+        return []
 
-class player():
-    def __init__ (self,index,position,board,walls = 0):
+
+class player:
+    def __init__(self, index, position, board, walls=0):
         self.index = index
         self.position = position
-        self.walls = walls # number of wall elements left
-        self.win = [] # list of positions that constitute winning the game
+        self.walls = walls  # number of wall elements left
+        self.win = []  # list of positions that constitute winning the game
         self.board = board
-    
+
     def __str__(self):
-        return "["+str(self.index)+" @ "+str(self.position)+"]" 
+        return "[" + str(self.index) + " @ " + str(self.position) + "]"
+
     def __repr__(self):
-        return "["+str(self.index)+" @ "+str(self.position)+"]"    
-    
-    def __eq__(self,other):
-        return self.index == other.index and self.board==other.board
-    
+        return "[" + str(self.index) + " @ " + str(self.position) + "]"
+
+    def __eq__(self, other):
+        return self.index == other.index and self.board == other.board
+
     # identify positions that count as a win if this player is on them
-    def add_winning_position(self,position):
+    def add_winning_position(self, position):
         self.win.append(position)
-        
+
     def path_to_victory(self):
         path_list = [[self.position]]
         path_index = 0
@@ -420,14 +712,13 @@ class player():
         previous_nodes = [self.position]
         if self.position in self.win:
             return path_list[0]
-            
+
         while path_index < len(path_list):
-            
             current_path = path_list[path_index]
             last_node = current_path[-1]
             next_nodes = self.board.get_valid_neighbours(last_node)
             # Search goal node
-            for w in self.win:  
+            for w in self.win:
                 if w in next_nodes:
                     current_path.append(w)
                     return current_path
@@ -443,91 +734,92 @@ class player():
             path_index += 1
         # No path is found
         return []
-    
-    
+
     def moves_to_victory(self):
-        n= 0
+        n = 0
         previous_nodes = [self.position]
-        queue = [(self.position,n)]
+        queue = [(self.position, n)]
         while queue:
             next_node = queue.pop(0)
-            children = self.board.get_valid_neighbours(next_node[0])
+            children = self.board.cells[next_node[0].x][next_node[0].y].valid_moves
             for c in children:
                 if c in self.win:
-                    return next_node[1]+1 # return current length of path
+                    return next_node[1] + 1  # return current length of path
                 if c not in previous_nodes:
-                    queue.append((c,next_node[1]+1))
+                    queue.append((c, next_node[1] + 1))
                     previous_nodes.append(c)
         # no winning path found
-        return -1    
-            
-        
-    
+        return -1
+
     def next_move(self):
         for p in map.players:
-            #print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True)  
+            # print("p.index self.index"+str(p.index)+","+str(self.index), file=sys.stderr, flush=True)
             moves = route_to_moves(self.path_to_victory())
-        return moves[0]  
-    
-    def move(self,m):
+        return moves[0]
+
+    def move(self, m):
         self.position.x += m.dx
         self.position.y += m.dy
-        
-    def move_back(self,m):
+
+    def move_back(self, m):
         self.position.x -= m.dx
         self.position.y -= m.dy
-    
+
     def won(self):
-        
         if self.position in self.win:
             return True
         else:
             return False
+
     def all_turns(self):
         turns = []
-        turns.append(move(0,-1))
-        turns.append(move(0,1))
-        turns.append(move(1,0))
-        turns.append(move(-1,0))
+        turns.append(move(0, -1))
+        turns.append(move(0, 1))
+        turns.append(move(1, 0))
+        turns.append(move(-1, 0))
         for i in range(9):
             for j in range(9):
-                for k in ["V","H"]:
-                    turns.append(wall(i,j,k))
+                for k in ["V", "H"]:
+                    turns.append(wall(i, j, k))
         return turns
 
-class wall():
-    def __init__ (self,x,y,o):
-        self.x=x
-        self.y=y
-        self.o=o
-    
+
+class wall:
+    def __init__(self, x, y, o):
+        self.x = x
+        self.y = y
+        self.o = o
+
     def __str__(self):
-        return "["+str(self.x)+","+str(self.y)+","+str(self.o)+"]"
+        return "[" + str(self.x) + "," + str(self.y) + "," + str(self.o) + "]"
 
     def __repr__(self):
-        return "["+str(self.x)+","+str(self.y)+","+str(self.o)+"]"
-      
+        return "[" + str(self.x) + "," + str(self.y) + "," + str(self.o) + "]"
+
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y and self.o == other.o
-    
+
     def __hash__(self) -> int:
         return hash(self.__str__())
 
     def to_text(self):
         return self.__str__()
-        
+
         # game function not linked to a specific class
+
+
 def all_turns():
     turns = []
-    turns.append(move(0,-1))
-    turns.append(move(0,1))
-    turns.append(move(1,0))
-    turns.append(move(-1,0))
+    turns.append(move(0, -1))
+    turns.append(move(0, 1))
+    turns.append(move(1, 0))
+    turns.append(move(-1, 0))
     for i in range(9):
         for j in range(9):
-            for k in ["V","H"]:
-                turns.append(wall(i,j,k))
+            for k in ["V", "H"]:
+                turns.append(wall(i, j, k))
     return turns
+
 
 # convert list of moves to text for the output
 def route_to_moves(route):
@@ -536,11 +828,11 @@ def route_to_moves(route):
     for i in route:
         dx = i.x - current.x
         dy = i.y - current.y
-        if dx == 0 and dy==1:
+        if dx == 0 and dy == 1:
             moves.append("DOWN")
         elif dx == 0 and dy == -1:
             moves.append("UP")
-        elif dx     == 1 and dy == 0:
+        elif dx == 1 and dy == 0:
             moves.append("RIGHT")
         elif dx == -1 and dy == 0:
             moves.append("LEFT")
@@ -550,8 +842,9 @@ def route_to_moves(route):
         current.y = i.y
     return moves
 
+
 def turn_to_text(t):
-    if isinstance(t,move):
+    if isinstance(t, move):
         if t.dx == 0 and t.dy == 1:
             return "DOWN"
         elif t.dx == 0 and t.dy == -1:
@@ -560,190 +853,212 @@ def turn_to_text(t):
             return "RIGHT"
         elif t.dx == -1:
             return "LEFT"
-    elif isinstance(t,wall):
-        return str(t.x)+" "+str(t.y)+" "+str(t.o)
+    elif isinstance(t, wall):
+        return str(t.x) + " " + str(t.y) + " " + str(t.o)
+
 
 def text_to_wall(t):
-    return wall(t[0],t[2],t[3])
+    return wall(t[0], t[2], t[3])
+
 
 def text_to_turn(t):
     turn = None
-    if t == "DOWN": turn = move(0,1)
-    elif t == "UP": turn = move(0,-1)
-    elif t == "LEFT": turn = move(-1,0)
-    elif t == "RIGTH": turn = move(1,0)
-    else: turn = text_to_wall (t)
-    
-    
-    
+    if t == "DOWN":
+        turn = move(0, 1)
+    elif t == "UP":
+        turn = move(0, -1)
+    elif t == "LEFT":
+        turn = move(-1, 0)
+    elif t == "RIGTH":
+        turn = move(1, 0)
+    else:
+        turn = text_to_wall(t)
+
+
 def text_to_moves(text):
     return all_turns()[text]
 
+
 # place a wall to block between to positions
-def blocks(current,to):
-    blocks=[]
+def blocks(current, to):
+    blocks = []
     # if movement is up
-    if current.x == to.x and current.y > to.y: 
-        blocks.append(wall(current.x,current.y,"H"))
-        blocks.append(wall(current.x-1,current.y,"H"))
-     # if movement is down
-    if current.x == to.x and current.y < to.y: 
-        blocks.append(wall(to.x,to.y,"H"))
-        blocks.append(wall(to.x-1,to.y,"H"))
+    if current.x == to.x and current.y > to.y:
+        blocks.append(wall(current.x, current.y, "H"))
+        blocks.append(wall(current.x - 1, current.y, "H"))
+    # if movement is down
+    if current.x == to.x and current.y < to.y:
+        blocks.append(wall(to.x, to.y, "H"))
+        blocks.append(wall(to.x - 1, to.y, "H"))
     # if movement is right
     if current.y == to.y and current.x < to.x:
-        blocks.append(wall(to.x,to.y,"V"))
-        blocks.append(wall(to.x,to.y-1,"V"))
+        blocks.append(wall(to.x, to.y, "V"))
+        blocks.append(wall(to.x, to.y - 1, "V"))
     # if movement is left
     if current.y == to.y and current.x > to.x:
-        blocks.append(wall(current.x,current.y,"V"))
-        blocks.append(wall(current.x,current.y-1,"V"))
-    
-    if not map.valid_wall(blocks[1]): blocks.pop(1)
-    if not map.valid_wall(blocks[0]): blocks.pop(0)
-            
+        blocks.append(wall(current.x, current.y, "V"))
+        blocks.append(wall(current.x, current.y - 1, "V"))
+
+    if not map.valid_wall(blocks[1]):
+        blocks.pop(1)
+    if not map.valid_wall(blocks[0]):
+        blocks.pop(0)
+
     return blocks
 
-# This is the minimax function. It considers all 
-# the possible ways the game can go and returns 
-# the value of the board 
-def minimax(grid, depth, player) : 
+
+# This is the minimax function. It considers all
+# the possible ways the game can go and returns
+# the value of the board
+def minimax(grid, depth, player):
     max_depth = 3
     score = grid.grid_score(player)
     isMax = False
-    if player.index == my_id: isMax = True
-    # If Maximizer has won the game return his/her 
-    # evaluated score 
-    if (score == 1000) : 
+    if player.index == my_id:
+        isMax = True
+    # If Maximizer has won the game return his/her
+    # evaluated score
+    if score == 1000:
         return score
-  
-    # If Minimizer has won the game return his/her 
-    # evaluated score 
-    if (score == -1000) :
+
+    # If Minimizer has won the game return his/her
+    # evaluated score
+    if score == -1000:
         return score
-    
+
     if depth == max_depth:
         return score
-  
-    # If this maximizer's move 
-    if (isMax) :     
+
+    # If this maximizer's move
+    if isMax:
         best = -10000
-  
-        # Traverse all move options 
+
+        # Traverse all move options
         for t in all_turns():
-               
-                # Check if t is valid
-                if is_valid_turn(t) :
-                  
-                    # Make the move 
-                    grid.take_turn(t,player)
-                    # Call minimax recursively and choose 
-                    # the maximum value 
-                    best = max( best, minimax(grid, depth + 1,grid.players[player.index+1 % player_count]))
-  
-                    # Undo the move 
-                    grid.undo_turn(t,player)
-        return best
-  
-    # If this minimizer's move 
-    else :
-        best = 10000
-  
-        # Traverse all move options 
-        for t in all_turns():
-               
-                # Check if t is valid
-                if is_valid_turn(t) :
-                  
-                    # Make the move 
-                    grid.take_turn(t,player)
-                    # Call minimax recursively and choose 
-                    # the maximum value 
-                    best = min( best, minimax(grid, depth + 1,grid.players[player.index+1 % player_count]))
-  
-                    # Undo the move 
-                    grid.undo_turn(t,player)
-        return best
-  
-# This will return the best possible move for the player 
-def findBestMove(grid) : 
-    bestVal = -1000 
-    bestMove = -1 
-  
-    # Traverse all cells, evaluate minimax function for 
-    # all empty cells. And return the cell with optimal 
-    # value. 
-    for t in all_turns():
-          
             # Check if t is valid
-            if is_valid_turn(t) :
-              
-                # Make the move 
-                grid.take_turn(t,player)
-                # compute evaluation function for this 
-                # move. 
-                moveVal = minimax(grid, 0, False) 
-  
-                # Undo the move 
-                grid.undo_turn(t,player)
-  
-                # If the value of the current move is 
-                # more than the best value, then update 
-                # best/ 
-                if (moveVal > bestVal) :                
-                    bestMove = t
-                    bestVal = moveVal
-  
-    #print("The value of the best Move is :", bestVal)
-    #print()
+            if is_valid_turn(t):
+                # Make the move
+                grid.take_turn(t, player)
+                # Call minimax recursively and choose
+                # the maximum value
+                best = max(
+                    best,
+                    minimax(
+                        grid, depth + 1, grid.players[player.index + 1 % player_count]
+                    ),
+                )
+
+                # Undo the move
+                grid.undo_turn(t, player)
+        return best
+
+    # If this minimizer's move
+    else:
+        best = 10000
+
+        # Traverse all move options
+        for t in all_turns():
+            # Check if t is valid
+            if is_valid_turn(t):
+                # Make the move
+                grid.take_turn(t, player)
+                # Call minimax recursively and choose
+                # the maximum value
+                best = min(
+                    best,
+                    minimax(
+                        grid, depth + 1, grid.players[player.index + 1 % player_count]
+                    ),
+                )
+
+                # Undo the move
+                grid.undo_turn(t, player)
+        return best
+
+
+# This will return the best possible move for the player
+def findBestMove(grid):
+    bestVal = -1000
+    bestMove = -1
+
+    # Traverse all cells, evaluate minimax function for
+    # all empty cells. And return the cell with optimal
+    # value.
+    for t in all_turns():
+        # Check if t is valid
+        if is_valid_turn(t):
+            # Make the move
+            grid.take_turn(t, player)
+            # compute evaluation function for this
+            # move.
+            moveVal = minimax(grid, 0, False)
+
+            # Undo the move
+            grid.undo_turn(t, player)
+
+            # If the value of the current move is
+            # more than the best value, then update
+            # best/
+            if moveVal > bestVal:
+                bestMove = t
+                bestVal = moveVal
+
+    # print("The value of the best Move is :", bestVal)
+    # print()
     return bestMove
 
-def is_valid_turn(t ,p: player):
-    if isinstance(t,str):
-        t= text_to_turn(t)
+
+def is_valid_turn(t, p: player):
+    if isinstance(t, str):
+        t = text_to_turn(t)
     valid = False
-    if isinstance(t,wall):
+    if isinstance(t, wall):
         valid = map.valid_wall(t)
-    if isinstance(t,move):
-        valid = map.valid_move(p.position,t)
+    if isinstance(t, move):
+        valid = map.valid_move2(p.position, t)
     return valid
+
 
 def best_turns():
     turns = []
-    turns.append(move(0,-1))
-    turns.append(move(0,1))
-    turns.append(move(1,0))
-    turns.append(move(-1,0))
+    turns.append(move(0, -1))
+    turns.append(move(0, 1))
+    turns.append(move(1, 0))
+    turns.append(move(-1, 0))
     turns.extend(map.touching_walls())
     turns.extend(map.touching_players())
-    
+
     unique_turns = list(set(turns))
-    
+
     return unique_turns
 
+
 def best_move(player):
-    #current_score = map.grid_score(me)
+    # current_score = map.grid_score(me)
     best_score = -10000
     best_move = None
 
     for t in best_turns():
-        if is_valid_turn(t,player):
-            #print("trying"+ str(t), file=sys.stderr, flush=True)
-            if isinstance(t,wall):
+        if is_valid_turn(t, player):
+            if isinstance(t, wall):
                 map.add_wall(t)
                 new_score = map.grid_score(me)
                 if new_score > best_score:
                     best_score = new_score
                     best_move = t
                 map.remove_wall(t)
-            if isinstance(t,move):
-                map.move_player(player.index,t)
+            if isinstance(t, move):
+                map.move_player(player.index, t)
                 new_score = map.grid_score(me)
                 if new_score > best_score:
                     best_score = new_score
                     best_move = t
-                map.move_player_back(player.index,t)
-    return best_move       
+                map.move_player_back(player.index, t)
+    else:
+        print("no valid move", file=sys.stderr, flush=True)
+    return best_move
+
+
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
@@ -754,89 +1069,122 @@ def best_move(player):
 w, h, player_count, my_id = [int(i) for i in input().split()]
 
 
-    
 game_turn = 0
 
 ## replace text with move and wall objects
 strategy = ""
-strategy_89 = ["1 7 H","3 7 H","LEFT","5 7 H","LEFT","7 7 V"]
-strategy_12 = ["1 2 H","3 2 H","LEFT","5 2 H","LEFT","7 0 V"]
+strategy_89 = ["1 7 H", "3 7 H", "LEFT", "5 7 H", "LEFT", "7 7 V"]
+strategy_12 = ["1 2 H", "3 2 H", "LEFT", "5 2 H", "LEFT", "7 0 V"]
 
-strategy_89L = ["6 7 H","4 7 H","RIGHT","2 7 H","RIGHT","1 7 V","RIGHT","0 7 H"]  
-strategy_12L = ["6 2 H","4 2 H","RIGHT","2 2 H","RIGHT","1 0 V","RIGHT","0 2 H"]
+strategy_89L = ["6 7 H", "4 7 H", "RIGHT", "2 7 H", "RIGHT", "1 7 V", "RIGHT", "0 7 H"]
+strategy_12L = ["6 2 H", "4 2 H", "RIGHT", "2 2 H", "RIGHT", "1 0 V", "RIGHT", "0 2 H"]
 
-strategy_45 = ["LEFT","8 6 V","8 2 V","6 8 H","4 8 H","2 8 H","8 4 V","LEFT","LEFT","8 0 V"]
-strategy_45L = ["RIGHT","1 6 V","1 2 V","1 8 H","3 8 H","5 8 H","1 4 V","RIGHT","RIGHT","1 0 V"]
+strategy_45 = [
+    "LEFT",
+    "8 6 V",
+    "8 2 V",
+    "6 8 H",
+    "4 8 H",
+    "2 8 H",
+    "8 4 V",
+    "LEFT",
+    "LEFT",
+    "8 0 V",
+]
+strategy_45L = [
+    "RIGHT",
+    "1 6 V",
+    "1 2 V",
+    "1 8 H",
+    "3 8 H",
+    "5 8 H",
+    "1 4 V",
+    "RIGHT",
+    "RIGHT",
+    "1 0 V",
+]
 # game loop
 while True:
     # measure the time at the start of a loop
     start = time.process_time()
-    
-    
+
     game_turn += 1
     players = []
     walls = []
     output = ""
-    
-    map = grid(w,h)
-    
+
+    map = grid(w, h)
+    map.set_valid_neighbours()
+
+    g = game()
+
     # get turn data from standard input stream
     for i in range(player_count):
         # x: x-coordinate of the player
         # y: y-coordinate of the player
         # walls_left: number of walls available for the player
         x, y, walls_left = [int(j) for j in input().split()]
-        map.add_player(i,position(x,y),walls_left)
+        map.add_player(i, position(x, y), walls_left)
+    g.add_players()
     wall_count = int(input())  # number of walls on the board
     for i in range(wall_count):
         inputs = input().split()
         wall_x = int(inputs[0])  # x-coordinate of the wall
         wall_y = int(inputs[1])  # y-coordinate of the wall
         wall_orientation = inputs[2]  # wall orientation ('H' or 'V')
-        walls.append(wall(wall_x,wall_y,wall_orientation))
+        map.add_wall(wall(wall_x, wall_y, wall_orientation))
+        g.state.set_wall(position(wall_x, wall_y), wall_orientation)
 
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr, flush=True)
     # print("map.players = "+ str(map.players), file=sys.stderr, flush=True)
-    
+
     # choose oppo
-    if my_id == 2: oppo_id = 1
-    if my_id == 0: oppo_id = 1
-    if my_id ==1: oppo_id = 0
-    
+    # TODO possible choose the oppo dynamically
+    if my_id == 2:
+        oppo_id = 1
+    if my_id == 0:
+        oppo_id = 1
+    if my_id == 1:
+        oppo_id = 0
+
     for i in range(h):
-        map.players[0].add_winning_position(position(8,i))
-        map.players[1].add_winning_position(position(0,i))
-    if player_count ==3:
+        map.players[0].add_winning_position(position(8, i))
+        map.players[1].add_winning_position(position(0, i))
+    if player_count == 3:
         for i in range(w):
-            map.players[2].add_winning_position(position(i,8))
-    
-    for new_wall in walls:
-        map.add_wall(new_wall)
-        
+            map.players[2].add_winning_position(position(i, 8))
+
     me = map.players[my_id]
-    my_dist = len(me.path_to_victory())
 
     oppo = map.players[oppo_id]
-    oppo_dist = len(oppo.path_to_victory())
-       
 
-    
-   # setup for each turn
-    if game_turn <0:
-        if oppo.position in [position(1,7),position(1,8)]:strategy = "89"
-        if oppo.position in [position(1,1),position(1,0)]:strategy = "12"
-        if oppo.position in [position(8,1),position(8,0)]:strategy = "12L" 
-        if oppo.position in [position(8,7),position(8,8)]:strategy = "89L"
-        if oppo.position in [position(8,4),position(8,5)]:strategy = "45L" 
-        if oppo.position in [position(1,4),position(0,4),position(1,5),position(0,5)]:strategy = "45"  
-           
+    # setup for each turn
+    if game_turn < 0:
+        if oppo.position in [position(1, 7), position(1, 8)]:
+            strategy = "89"
+        if oppo.position in [position(1, 1), position(1, 0)]:
+            strategy = "12"
+        if oppo.position in [position(8, 1), position(8, 0)]:
+            strategy = "12L"
+        if oppo.position in [position(8, 7), position(8, 8)]:
+            strategy = "89L"
+        if oppo.position in [position(8, 4), position(8, 5)]:
+            strategy = "45L"
+        if oppo.position in [
+            position(1, 4),
+            position(0, 4),
+            position(1, 5),
+            position(0, 5),
+        ]:
+            strategy = "45"
+
     if strategy == "89":
         if strategy_89:
             output = strategy_89.pop(0)
         else:
             strategy = ""
-    
+
     if strategy == "12":
         if strategy_12:
             output = strategy_12.pop(0)
@@ -849,20 +1197,20 @@ while True:
             strategy = ""
     if strategy == "12L":
         if strategy_12L:
-            if is_valid_turn(strategy_12L[0],me):
+            if is_valid_turn(strategy_12L[0], me):
                 output = strategy_12L.pop(0)
         else:
             strategy = ""
-            
+
     if strategy == "45":
         if strategy_45:
             output = strategy_45.pop(0)
         else:
             strategy = ""
-    
+
     if strategy == "45L":
         if strategy_45L:
-            if is_valid_turn(strategy_45L[0],me):
+            if is_valid_turn(strategy_45L[0], me):
                 if strategy_45L[0] == "BEST":
                     output = turn_to_text(best_move(me))
                 else:
@@ -871,31 +1219,72 @@ while True:
                 strategy = ""
         else:
             strategy = ""
-    
-    if strategy == "" or output=="":
-        #print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
-        #print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
+
+    if strategy == "" or output == "":
+        # print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
+        # print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
         # if me dist >= oppo dist - test block
-        #print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
-        #print(me.path_to_victory(), file=sys.stderr, flush=True)
-        #print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
-        #print(oppo.path_to_victory(), file=sys.stderr, flush=True)
-        #block = blocks(oppo.position,oppo.path_to_victory()[1])
-        #if my_dist > oppo_dist and block and me.walls != 0:
+        # print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
+        # print(me.path_to_victory(), file=sys.stderr, flush=True)
+        # print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
+        # print(oppo.path_to_victory(), file=sys.stderr, flush=True)
+        # block = blocks(oppo.position,oppo.path_to_victory()[1])
+        # if my_dist > oppo_dist and block and me.walls != 0:
         #    output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
-        #else:
-        #    output = me.next_move() 
-        #print("best_move", file=sys.stderr, flush=True)
+        # else:
+        #    output = me.next_move()
+        # print("best_move", file=sys.stderr, flush=True)
+
+        print(
+            "state assessment for player 0 dist = "
+            + str(g.get_path_len(map.players[0])),
+            file=sys.stderr,
+            flush=True,
+        )
+
+        print("UP", file=sys.stderr, flush=True)
+        for i in range(0, 81, 9):
+            print(
+                str(bin(g.state.con[0]))[-i - 1 : -i - 10 : -1],
+                end=" ",
+                file=sys.stderr,
+                flush=True,
+            )
+            print("", file=sys.stderr, flush=True)
+        print("RIGHT", file=sys.stderr, flush=True)
+        for i in range(0, 81, 9):
+            print(
+                str(bin(g.state.con[1]))[-i - 1 : -i - 10 : -1],
+                end=" ",
+                file=sys.stderr,
+                flush=True,
+            )
+            print("", file=sys.stderr, flush=True)
+        print("DOWN", file=sys.stderr, flush=True)
+        for i in range(0, 81, 9):
+            print(
+                str(bin(g.state.con[2]))[-i - 1 : -i - 10 : -1],
+                end=" ",
+                file=sys.stderr,
+                flush=True,
+            )
+            print("", file=sys.stderr, flush=True)
+        print("LEFT", file=sys.stderr, flush=True)
+        for i in range(0, 81, 9):
+            print(
+                str(bin(g.state.con[3]))[-i - 1 : -i - 10 : -1],
+                end=" ",
+                file=sys.stderr,
+                flush=True,
+            )
+            print("", file=sys.stderr, flush=True)
+        print("", file=sys.stderr, flush=True)
+
         output = turn_to_text(best_move(me))
-        
+
         ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
-        
-        end = time.process_time()-start
-        #print("time for this round"+ str(end), file=sys.stderr, flush=True)
-        
-        
+
+        end = time.process_time() - start
+        # print("time for this round"+ str(end), file=sys.stderr, flush=True)
+
     print(output)
-
-
-
-
