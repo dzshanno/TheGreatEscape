@@ -130,15 +130,14 @@ class state:
     def touching_players(self):
         tp = []
         for pl in self.players:
-            if pl != me:
-                tp.append(wall(pl.position.x, pl.position.y, "V"))
-                tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
-                tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
-                tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
-                tp.append(wall(pl.position.x, pl.position.y, "H"))
-                tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
-                tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
-                tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
+            tp.append(wall(pl.position.x, pl.position.y, "V"))
+            tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
+            tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
+            tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
+            tp.append(wall(pl.position.x, pl.position.y, "H"))
+            tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
+            tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
+            tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
         return tp
 
 
@@ -189,13 +188,17 @@ class game:
 
     def valid_wall(self, new_wall):
         valid = True
-
-        valid = self.wall_inbounds(new_wall)
-        if valid:
-            valid = self.no_wall_overlap(new_wall)
-        if valid:
+        if not self.wall_inbounds(new_wall):
+            valid = False
+            print("wall out of bounbds", file=sys.stderr, flush=True)
+        elif not self.no_wall_overlap(new_wall):
+            valid = False
+            print("wall overlap", file=sys.stderr, flush=True)
+        else:
             self.state.set_wall(new_wall)
-            valid = self.no_block_in(new_wall)
+            if not self.no_block_in(new_wall):
+                valid = False
+                print("wall causes block in", file=sys.stderr, flush=True)
             self.state.reset_wall(new_wall)
 
         return valid
@@ -379,13 +382,13 @@ class game:
             if pl.index == my_id:
                 pl_dist = dist
                 print("pl dist = : " + str(pl_dist), file=sys.stderr, flush=True)
-            elif dist < oppo_dist:
-                oppo_dist = dist
+            elif pl.walls != -1:
+                oppo_dist += dist
                 print("oppo dist = : " + str(oppo_dist), file=sys.stderr, flush=True)
 
         # add a * the difference in length of path to victory for the best opponent
         score += a * pl_dist
-        score += b * (oppo_dist)
+        score += b * (oppo_dist / (player_count - 1))
         # score += c * pl.walls
         # score += d * min(oppo_walls)
         # score += e * self.walls_ahead(pl)
@@ -800,15 +803,14 @@ class grid:
     def touching_players(self):
         tp = []
         for pl in self.players:
-            if pl != me:
-                tp.append(wall(pl.position.x, pl.position.y, "V"))
-                tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
-                tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
-                tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
-                tp.append(wall(pl.position.x, pl.position.y, "H"))
-                tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
-                tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
-                tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
+            tp.append(wall(pl.position.x, pl.position.y, "V"))
+            tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
+            tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
+            tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
+            tp.append(wall(pl.position.x, pl.position.y, "H"))
+            tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
+            tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
+            tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
         return tp
 
     def set_valid_neighbours(self, p=None):
@@ -1073,7 +1075,7 @@ def turn_to_text(t):
 
 
 def text_to_wall(t):
-    return wall(t[0], t[2], t[3])
+    return wall(int(t[0]), int(t[2]), t[4])
 
 
 def text_to_turn(t):
@@ -1084,10 +1086,12 @@ def text_to_turn(t):
         turn = move(0, -1)
     elif t == "LEFT":
         turn = move(-1, 0)
-    elif t == "RIGTH":
+    elif t == "RIGHT":
         turn = move(1, 0)
     else:
         turn = text_to_wall(t)
+
+    return turn
 
 
 def text_to_moves(text):
@@ -1263,11 +1267,34 @@ game_turn = 0
 
 ## replace text with move and wall objects
 strategy = ""
-strategy_89 = ["1 7 H", "3 7 H", "LEFT", "5 7 H", "LEFT", "7 7 V"]
-strategy_12 = ["1 2 H", "3 2 H", "LEFT", "5 2 H", "LEFT", "7 0 V"]
+strategy_78 = ["1 7 H", "3 7 H", "LEFT", "5 7 H", "LEFT", "7 7 V"]
+strategy_01 = ["1 2 H", "3 2 H", "LEFT", "5 2 H", "LEFT", "7 0 V"]
 
-strategy_89L = ["6 7 H", "4 7 H", "RIGHT", "2 7 H", "RIGHT", "1 7 V", "RIGHT", "0 7 H"]
-strategy_12L = ["6 2 H", "4 2 H", "RIGHT", "2 2 H", "RIGHT", "1 0 V", "RIGHT", "0 2 H"]
+strategy_78L = ["6 7 H", "4 7 H", "RIGHT", "2 7 H", "RIGHT", "1 7 V", "RIGHT", "0 7 H"]
+strategy_01L = ["6 2 H", "4 2 H", "RIGHT", "2 2 H", "RIGHT", "1 0 V", "RIGHT", "0 2 H"]
+
+strategy_3L = [
+    "RIGHT",
+    "1 1 V",
+    "1 5 V",
+    "1 1 H",
+    "3 1 H",
+    "5 1 H",
+    "RIGHT",
+    "RIGHT",
+    "1 3 V",
+]
+strategy_3 = [
+    "8 1 V",
+    "8 5 V",
+    "6 1 H",
+    "4 1 H",
+    "2 1 H",
+    "LEFT",
+    "8 3 V",
+    "LEFT",
+    "LEFT",
+]
 
 strategy_45 = [
     "LEFT",
@@ -1293,6 +1320,8 @@ strategy_45L = [
     "RIGHT",
     "1 0 V",
 ]
+
+strategy_p0 = ["0 1 H", "2 1 H", "4 1 H", "6 1 H", "RIGHT", "RIGHT", "RIGHT", "RIGHT"]
 # game loop
 while True:
     # measure the time at the start of a loop
@@ -1327,27 +1356,45 @@ while True:
 
     # choose oppo
     # TODO possible choose the oppo dynamically
-    if my_id == 2:
-        oppo_id = 1
-    if my_id == 0:
-        oppo_id = 1
-    if my_id == 1:
-        oppo_id = 0
+
+    if player_count == 3:
+        oppo_dist = 0
+        for pl in g.state.players:
+            if pl.index != my_id:
+                new_oppo_dist = g.get_path_len(pl)
+                if new_oppo_dist > oppo_dist:
+                    oppo_dist = new_oppo_dist
+                    oppo_id = pl.index
+    else:
+        if my_id == 0:
+            oppo_id = 1
+        if my_id == 1:
+            oppo_id = 0
 
     me = g.state.players[my_id]
 
     oppo = g.state.players[oppo_id]
 
     # setup for each turn
-    if game_turn < 0:
-        if oppo.position in [position(1, 7), position(1, 8)]:
-            strategy = "89"
-        if oppo.position in [position(1, 1), position(1, 0)]:
-            strategy = "12"
+    if game_turn < 3 and player_count == 2:
+        if oppo.position in [
+            position(1, 7),
+            position(1, 8),
+            position(0, 7),
+            position(0, 8),
+        ]:
+            strategy = "78"
+        if oppo.position in [
+            position(1, 1),
+            position(1, 0),
+            position(0, 0),
+            position(0, 1),
+        ]:
+            strategy = "01"
         if oppo.position in [position(8, 1), position(8, 0)]:
-            strategy = "12L"
+            strategy = "01L"
         if oppo.position in [position(8, 7), position(8, 8)]:
-            strategy = "89L"
+            strategy = "78L"
         if oppo.position in [position(8, 4), position(8, 5)]:
             strategy = "45L"
         if oppo.position in [
@@ -1357,33 +1404,54 @@ while True:
             position(0, 5),
         ]:
             strategy = "45"
+        if oppo.position in [position(8, 3)]:
+            strategy = "3L"
+        if oppo.position in [position(0, 3), position(1, 3)]:
+            strategy = "3"
+        # if me.position in [position(0,0)]: strategy = "p0"
 
-    if strategy == "89":
-        if strategy_89:
-            output = strategy_89.pop(0)
+    print("Strategy =" + str(strategy), file=sys.stderr, flush=True)
+
+    if strategy == "78":
+        if strategy_78:
+            if is_valid_turn(strategy_78[0], me):
+                output = strategy_78.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
 
-    if strategy == "12":
-        if strategy_12:
-            output = strategy_12.pop(0)
+    if strategy == "01":
+        if strategy_01:
+            if is_valid_turn(strategy_01[0], me):
+                output = strategy_01.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
-    if strategy == "89L":
-        if strategy_89L:
-            output = strategy_89L.pop(0)
+    if strategy == "78L":
+        if strategy_78L:
+            if is_valid_turn(strategy_78L[0], me):
+                output = strategy_78L.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
-    if strategy == "12L":
-        if strategy_12L:
-            if is_valid_turn(strategy_12L[0], me):
-                output = strategy_12L.pop(0)
+    if strategy == "01L":
+        if strategy_01L:
+            if is_valid_turn(strategy_01L[0], me):
+                output = strategy_01L.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
 
     if strategy == "45":
         if strategy_45:
-            output = strategy_45.pop(0)
+            if is_valid_turn(strategy_45[0], me):
+                output = strategy_45.pop(0)
+            else:
+                strategy = ""
         else:
             strategy = ""
 
@@ -1391,7 +1459,7 @@ while True:
         if strategy_45L:
             if is_valid_turn(strategy_45L[0], me):
                 if strategy_45L[0] == "BEST":
-                    output = turn_to_text(best_move(me))
+                    output = turn_to_text(g.best_move(me))
                 else:
                     output = strategy_45L.pop(0)
             else:
@@ -1399,21 +1467,43 @@ while True:
         else:
             strategy = ""
 
-    if strategy == "" or output == "":
-        # print("strategy = "+ str(strategy), file=sys.stderr, flush=True)
-        # print("Grid score = "+ str(map.grid_score(me)), file=sys.stderr, flush=True)
-        # if me dist >= oppo dist - test block
-        # print("my dist..."+ str(my_dist), file=sys.stderr, flush=True)
-        # print(me.path_to_victory(), file=sys.stderr, flush=True)
-        # print("oppo dist..."+ str(oppo_dist), file=sys.stderr, flush=True)
-        # print(oppo.path_to_victory(), file=sys.stderr, flush=True)
-        # block = blocks(oppo.position,oppo.path_to_victory()[1])
-        # if my_dist > oppo_dist and block and me.walls != 0:
-        #    output = str(block[0].x)+" "+str(block[0].y)+" "+str(block[0].o)
-        # else:
-        #    output = me.next_move()
-        # print("best_move", file=sys.stderr, flush=True)
+    if strategy == "3L":
+        if strategy_3L:
+            if is_valid_turn(strategy_3L[0], me):
+                if strategy_3L[0] == "BEST":
+                    output = turn_to_text(g.best_move(me))
+                else:
+                    output = strategy_3L.pop(0)
+            else:
+                strategy = ""
+        else:
+            strategy = ""
 
+    if strategy == "3":
+        if strategy_3:
+            if is_valid_turn(strategy_3[0], me):
+                if strategy_3[0] == "BEST":
+                    output = turn_to_text(g.best_move(me))
+                else:
+                    output = strategy_3.pop(0)
+            else:
+                strategy = ""
+        else:
+            strategy = ""
+
+    if strategy == "p0":
+        if strategy_p0:
+            if is_valid_turn(strategy_p0[0], me):
+                if strategy_p0[0] == "BEST":
+                    output = turn_to_text(g.best_move(me))
+                else:
+                    output = strategy_p0.pop(0)
+            else:
+                strategy = ""
+        else:
+            strategy = ""
+
+    if strategy == "" or output == "":
         print("UP", file=sys.stderr, flush=True)
         for i in range(0, 81, 9):
             print(
