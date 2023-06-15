@@ -45,9 +45,12 @@ class state:
         self.con = [0, 0, 0, 0]  # 4 81 bit integers up/right/down/left
         self.pl_pos = [0, 0, 0]
         self.pl_wall = [0, 0, 0]
+        self.walls = []
+        self.players = []
 
-    def set_wall(self, position, type):
-        pos = position.x + (position.y * w)
+    def set_wall(self, wall):
+        pos = wall.x + (wall.y * w)
+        type = wall.o
         if type == "H":
             self.con[0] = reset_bit(self.con[0], pos)
             self.con[0] = reset_bit(self.con[0], pos + 1)
@@ -58,6 +61,85 @@ class state:
             self.con[1] = reset_bit(self.con[1], pos + w - 1)
             self.con[3] = reset_bit(self.con[3], pos)
             self.con[3] = reset_bit(self.con[3], pos + w)
+        self.walls.append(wall)
+
+    def reset_wall(self, wall):
+        pos = wall.x + (wall.y * w)
+        type = wall.o
+        if type == "H":
+            self.con[0] = set_bit(self.con[0], pos)
+            self.con[0] = set_bit(self.con[0], pos + 1)
+            self.con[2] = set_bit(self.con[2], pos - w)
+            self.con[2] = set_bit(self.con[2], pos - w + 1)
+        else:
+            self.con[1] = set_bit(self.con[1], pos - 1)
+            self.con[1] = set_bit(self.con[1], pos + w - 1)
+            self.con[3] = set_bit(self.con[3], pos)
+            self.con[3] = set_bit(self.con[3], pos + w)
+        self.walls.remove(wall)
+
+    def move_player(self, player, move):
+        self.pl_pos[player.index] += move.dx + (move.dy) * w
+        self.players[player.index].position.x += move.dx
+        self.players[player.index].position.y += move.dy
+
+    def unmove_player(self, player, move):
+        self.pl_pos[player.index] -= move.dx + (move.dy) * w
+        self.players[player.index].position.x -= move.dx
+        self.players[player.index].position.y -= move.dy
+
+    def touching_walls(self):
+        tw = []
+        for w in self.walls:
+            if w.o == "V":
+                tw.append(wall(w.x - 2, w.y, "H"))
+                tw.append(wall(w.x - 1, w.y, "H"))
+                tw.append(wall(w.x, w.y, "H"))
+                tw.append(wall(w.x - 2, w.y + 1, "H"))
+                tw.append(wall(w.x, w.y + 1, "H"))
+                tw.append(wall(w.x - 2, w.y + 2, "H"))
+                tw.append(wall(w.x - 1, w.y + 2, "H"))
+                tw.append(wall(w.x, w.y + 2, "H"))
+                tw.append(wall(w.x, w.y - 2, "V"))
+                tw.append(wall(w.x, w.y + 2, "V"))
+            if w.o == "H":
+                tw.append(wall(w.x - 2, w.y, "H"))
+                tw.append(wall(w.x, w.y, "V"))
+                tw.append(wall(w.x + 2, w.y, "H"))
+                tw.append(wall(w.x, w.y - 2, "V"))
+                tw.append(wall(w.x + 1, w.y - 2, "V"))
+                tw.append(wall(w.x + 2, w.y - 2, "V"))
+                tw.append(wall(w.x + 1, w.y, "V"))
+                tw.append(wall(w.x + 2, w.y, "V"))
+                tw.append(wall(w.x, w.y - 1, "V"))
+                tw.append(wall(w.x + 2, w.y - 1, "V"))
+        return tw
+
+    def blocking_players(self):
+        tp = []
+        for pl in self.players:
+            if pl != me:
+                for i in range(self.w - 1):
+                    tp.append(wall(i, pl.position.y, "V"))
+                    tp.append(wall(i, pl.position.y - 1, "V"))
+                for j in range(self.h - 1):
+                    tp.append(wall(pl.position.x, j, "H"))
+                    tp.append(wall(pl.position.x - 1, j, "H"))
+        return tp
+
+    def touching_players(self):
+        tp = []
+        for pl in self.players:
+            if pl != me:
+                tp.append(wall(pl.position.x, pl.position.y, "V"))
+                tp.append(wall(pl.position.x + 1, pl.position.y, "V"))
+                tp.append(wall(pl.position.x, pl.position.y - 1, "V"))
+                tp.append(wall(pl.position.x + 1, pl.position.y - 1, "V"))
+                tp.append(wall(pl.position.x, pl.position.y, "H"))
+                tp.append(wall(pl.position.x - 1, pl.position.y, "H"))
+                tp.append(wall(pl.position.x, pl.position.y + 1, "H"))
+                tp.append(wall(pl.position.x - 1, pl.position.y + 1, "H"))
+        return tp
 
 
 class game:
@@ -87,6 +169,11 @@ class game:
             self.pl_won[1] = set_bit(self.pl_won[1], i * 9)
             self.pl_won[2] = set_bit(self.pl_won[2], (8) * 9 + i)
 
+    def add_player(self, pl):
+        self.state.pl_pos[pl.index] = pl.position.x + pl.position.y * w
+        self.state.pl_wall[pl.index] = pl.walls
+        self.state.players.append(pl)
+
     def valid_move(self, position, move):
         pos = position.x + (9 * position.y)
         if move.dy == -1 and check_bit(self.state.con[0], pos):
@@ -100,52 +187,169 @@ class game:
         else:
             return False
 
+    def valid_wall(self, new_wall):
+        valid = True
+
+        valid = self.wall_inbounds(new_wall)
+        if valid:
+            valid = self.no_wall_overlap(new_wall)
+        if valid:
+            self.state.set_wall(new_wall)
+            valid = self.no_block_in(new_wall)
+            self.state.reset_wall(new_wall)
+
+        return valid
+
+    def wall_inbounds(self, new_wall):
+        valid = True
+        if new_wall.o == "H" and new_wall.x >= 8:
+            valid = False
+        elif new_wall.o == "H" and new_wall.y <= 0:
+            valid = False
+        elif new_wall.o == "H" and new_wall.y > 8:
+            valid = False
+        elif new_wall.o == "H" and new_wall.x < 0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.y >= 8:
+            valid = False
+        elif new_wall.o == "V" and new_wall.x <= 0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.y < 0:
+            valid = False
+        elif new_wall.o == "V" and new_wall.x > 8:
+            valid = False
+
+        return valid
+
+    def no_wall_overlap(self, new_wall):
+        valid = True
+        if len(self.state.walls) > 0:
+            for w in self.state.walls:
+                # idenical walls
+                if w.o == new_wall.o and w.x == new_wall.x and w.y == new_wall.y:
+                    valid = False
+                # new wall 1 above an existing vertical wall
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x
+                    and w.y == new_wall.y + 1
+                ):
+                    valid = False
+                # new wall 1 below an existing vertical wall
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x
+                    and w.y == new_wall.y - 1
+                ):
+                    valid = False
+                # new wall 1 to the left of a horizonal wall
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x - 1
+                    and w.y == new_wall.y
+                ):
+                    valid = False
+                # new wall 1 to the right of a horizonal wall
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x + 1
+                    and w.y == new_wall.y
+                ):
+                    valid = False
+                # new vertical wall crossing a horizontal
+                elif (
+                    w.o == "H"
+                    and new_wall.o == "V"
+                    and w.x == new_wall.x - 1
+                    and w.y == new_wall.y + 1
+                ):
+                    valid = False
+                # new Horizontal wall crossing a vertical
+                elif (
+                    w.o == "V"
+                    and new_wall.o == "H"
+                    and w.x == new_wall.x + 1
+                    and w.y == new_wall.y - 1
+                ):
+                    valid = False
+
+        return valid
+
+    def no_block_in(self, new_wall):
+        valid = True
+        for pl in self.state.players:
+            if pl.position.x != -1 and self.get_path_len(pl) == -11:
+                valid = False
+
+        return valid
+
     def get_path_len(self, pl):
         pos = self.state.pl_pos[pl.index]
-        # check for win condition
-        if check_bit(self.pl_won[pl.index], pos):
-            return 0
-        self.depth = +1
-        win = self.pl_won[pl.index]
-        cur = 1 << pos
-        visits = cur
-        dist = 0
-        while True:
-            if cur == 0:
+        print(
+            "pos of: " + str(pl.index) + " = " + str(pos), file=sys.stderr, flush=True
+        )
+        # make sure the person is still playing
+        if pos > -1:
+            # check for win condition
+            if check_bit(self.pl_won[pl.index], pos):
+                print(str(bin(self.pl_won[pl.index])), file=sys.stderr, flush=True)
                 return -1
+            self.depth = +1
+            win = self.pl_won[pl.index]
+            cur = 1 << pos
+            visits = cur
+            dist = 0
+            while True:
+                if cur == 0:
+                    return -11
 
-            if (cur & win) > 0:
-                return dist
+                if (cur & win) > 0:
+                    return dist
 
-            cur = (
-                cur & self.state.con[0] >> w
-                | (cur & self.state.con[1]) << 1
-                | (cur & self.state.con[2]) << w
-                | (cur & self.state.con[3]) >> 1
-            )
-            cur &= ~visits
-            visits |= cur
-            dist += 1
-        return -1
-
-    def add_players(self):
-        self.state.pl_pos[0] = map.players[0].position.x + (
-            map.players[0].position.y * w
-        )
-        self.state.pl_pos[1] = map.players[1].position.x + (
-            map.players[1].position.y * w
-        )
-        if player_count == 3:
-            self.state.pl_pos[2] = map.players[2].position.x + (
-                map.players[2].position.y * w
-            )
-
-    def add_player(self, pl):
-        self.state.pl_pos[pl.index] = pl.x + pl.y * w
-        self.state.pl_wall[pl.index] = pl.walls
+                cur = (
+                    (cur & self.state.con[0]) >> 9
+                    | (cur & self.state.con[1]) << 1
+                    | (cur & self.state.con[2]) << 9
+                    | (cur & self.state.con[3]) >> 1
+                )
+                cur &= ~visits
+                visits |= cur
+                dist += 1
+        return -111
 
     def best_move(self, player):
-        pass
+        best_score = -10000
+        best_move = None
+
+        for t in best_turns(player):
+            print("", file=sys.stderr, flush=True)
+            print("move: " + str(t), file=sys.stderr, flush=True)
+            if is_valid_turn(t, player):
+                print("Valid turn", file=sys.stderr, flush=True)
+                if isinstance(t, wall):
+                    g.state.set_wall(t)
+                    new_score = g.game_score(me)
+                    print("score: " + str(new_score), file=sys.stderr, flush=True)
+                    if new_score > best_score:
+                        best_score = new_score
+                        best_move = t
+                    g.state.reset_wall(t)
+                if isinstance(t, move):
+                    g.state.move_player(player, t)
+                    new_score = g.game_score(me)
+                    print("score: " + str(new_score), file=sys.stderr, flush=True)
+                    if new_score > best_score:
+                        best_score = new_score
+                        best_move = t
+                    g.state.unmove_player(player, t)
+            else:
+                print("not valid turn", file=sys.stderr, flush=True)
+
+        return best_move
 
     def game_score(self, pl):
         a = -5
@@ -155,22 +359,33 @@ class game:
         e = -1
         score = 0
         oppo_dist = 100
-        path = []
         pl_dist = 100
-        for pl in self.players:
+        for pl in self.state.players:
             dist = self.get_path_len(pl)
-            if dist == -1:
-                # wall causes a block in
-                score += -10000
+            if pl.index != my_id and dist == -1:
+                # opponnent wins
+                print("player has won", file=sys.stderr, flush=True)
+                score += -111111
+                break
+            if pl.index == my_id and dist == -1:
+                # I win
+                print("I have win", file=sys.stderr, flush=True)
+                score += 99999999
+            if dist == -11:
+                # no valid moves
+                print("no valid path", file=sys.stderr, flush=True)
+                score += -22222
                 break
             if pl.index == my_id:
                 pl_dist = dist
-            elif len(path) < oppo_dist:
+                print("pl dist = : " + str(pl_dist), file=sys.stderr, flush=True)
+            elif dist < oppo_dist:
                 oppo_dist = dist
+                print("oppo dist = : " + str(oppo_dist), file=sys.stderr, flush=True)
 
         # add a * the difference in length of path to victory for the best opponent
         score += a * pl_dist
-        score += b * (oppo_dist - 1)
+        score += b * (oppo_dist)
         # score += c * pl.walls
         # score += d * min(oppo_walls)
         # score += e * self.walls_ahead(pl)
@@ -1013,50 +1228,25 @@ def is_valid_turn(t, p: player):
         t = text_to_turn(t)
     valid = False
     if isinstance(t, wall):
-        valid = map.valid_wall(t)
+        valid = g.valid_wall(t)
     if isinstance(t, move):
-        valid = map.valid_move2(p.position, t)
+        valid = g.valid_move(p.position, t)
     return valid
 
 
-def best_turns():
+def best_turns(player):
     turns = []
     turns.append(move(0, -1))
     turns.append(move(0, 1))
     turns.append(move(1, 0))
     turns.append(move(-1, 0))
-    turns.extend(map.touching_walls())
-    turns.extend(map.touching_players())
+    if player.walls:
+        turns.extend(g.state.touching_walls())
+        turns.extend(g.state.touching_players())
 
     unique_turns = list(set(turns))
 
     return unique_turns
-
-
-def best_move(player):
-    # current_score = map.grid_score(me)
-    best_score = -10000
-    best_move = None
-
-    for t in best_turns():
-        if is_valid_turn(t, player):
-            if isinstance(t, wall):
-                map.add_wall(t)
-                new_score = map.grid_score(me)
-                if new_score > best_score:
-                    best_score = new_score
-                    best_move = t
-                map.remove_wall(t)
-            if isinstance(t, move):
-                map.move_player(player.index, t)
-                new_score = map.grid_score(me)
-                if new_score > best_score:
-                    best_score = new_score
-                    best_move = t
-                map.move_player_back(player.index, t)
-    else:
-        print("no valid move", file=sys.stderr, flush=True)
-    return best_move
 
 
 # Auto-generated code below aims at helping you parse
@@ -1113,9 +1303,6 @@ while True:
     walls = []
     output = ""
 
-    map = grid(w, h)
-    map.set_valid_neighbours()
-
     g = game()
 
     # get turn data from standard input stream
@@ -1124,16 +1311,15 @@ while True:
         # y: y-coordinate of the player
         # walls_left: number of walls available for the player
         x, y, walls_left = [int(j) for j in input().split()]
-        map.add_player(i, position(x, y), walls_left)
-    g.add_players()
+        g.add_player(player(i, position(x, y), g, walls_left))
+
     wall_count = int(input())  # number of walls on the board
     for i in range(wall_count):
         inputs = input().split()
         wall_x = int(inputs[0])  # x-coordinate of the wall
         wall_y = int(inputs[1])  # y-coordinate of the wall
         wall_orientation = inputs[2]  # wall orientation ('H' or 'V')
-        map.add_wall(wall(wall_x, wall_y, wall_orientation))
-        g.state.set_wall(position(wall_x, wall_y), wall_orientation)
+        g.state.set_wall(wall(wall_x, wall_y, wall_orientation))
 
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr, flush=True)
@@ -1148,16 +1334,9 @@ while True:
     if my_id == 1:
         oppo_id = 0
 
-    for i in range(h):
-        map.players[0].add_winning_position(position(8, i))
-        map.players[1].add_winning_position(position(0, i))
-    if player_count == 3:
-        for i in range(w):
-            map.players[2].add_winning_position(position(i, 8))
+    me = g.state.players[my_id]
 
-    me = map.players[my_id]
-
-    oppo = map.players[oppo_id]
+    oppo = g.state.players[oppo_id]
 
     # setup for each turn
     if game_turn < 0:
@@ -1235,13 +1414,6 @@ while True:
         #    output = me.next_move()
         # print("best_move", file=sys.stderr, flush=True)
 
-        print(
-            "state assessment for player 0 dist = "
-            + str(g.get_path_len(map.players[0])),
-            file=sys.stderr,
-            flush=True,
-        )
-
         print("UP", file=sys.stderr, flush=True)
         for i in range(0, 81, 9):
             print(
@@ -1280,7 +1452,7 @@ while True:
             print("", file=sys.stderr, flush=True)
         print("", file=sys.stderr, flush=True)
 
-        output = turn_to_text(best_move(me))
+        output = turn_to_text(g.best_move(me))
 
         ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
 
