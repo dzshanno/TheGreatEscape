@@ -61,6 +61,7 @@ class state:
         if isinstance(t, str):
             t = text_to_turn(t)
         if isinstance(t, wall):
+            print("setting wall:" + str(t), file=sys.stderr, flush=True)
             self.set_wall(t)
         elif isinstance(t, move):
             self.move_player(pl, t)
@@ -73,7 +74,7 @@ class state:
         if isinstance(t, str):
             t = text_to_turn(t)
         if isinstance(t, wall):
-            self.set_wall(t)
+            self.reset_wall(t)
         if isinstance(t, move):
             self.unmove_player(pl, t)
 
@@ -111,6 +112,11 @@ class state:
         self.pl_pos[player.index] += move.dx + (move.dy) * w
         self.players[player.index].position.x += move.dx
         self.players[player.index].position.y += move.dy
+        print(
+            "player position is:" + str(self.pl_pos[player.index]),
+            file=sys.stderr,
+            flush=True,
+        )
 
     def unmove_player(self, player, move):
         self.pl_pos[player.index] -= move.dx + (move.dy) * w
@@ -218,13 +224,19 @@ class game:
     def valid_wall(self, new_wall):
         valid = True
         if not self.wall_inbounds(new_wall):
+            print(str(new_wall) + " is out of bounds", file=sys.stderr, flush=True)
+
             valid = False
         elif not self.no_wall_overlap(new_wall):
+            print(str(new_wall) + " overlaps", file=sys.stderr, flush=True)
+
             valid = False
         else:
             self.state.set_wall(new_wall)
             if not self.no_block_in(new_wall):
                 valid = False
+                print(str(new_wall) + " causes block-in", file=sys.stderr, flush=True)
+
             self.state.reset_wall(new_wall)
 
         return valid
@@ -350,7 +362,7 @@ class game:
     # the possible ways the game can go and returns
     # the value of the board
     def minimax(self, depth: int, player):
-        max_depth = 3
+        max_depth = 1
         score = g.game_score(player)
 
         isMax = False
@@ -376,32 +388,17 @@ class game:
 
             # Traverse all move options
             for t in best_turns(player):
+                print(
+                    "If my move " + str(depth) + " is " + str(t),
+                    file=sys.stderr,
+                    flush=True,
+                )
                 # Check if t is valid
                 if is_valid_turn(t, player):
                     # Make the move
-                    print(
-                        "before turn:"
-                        + str(t)
-                        + " pathlen =:"
-                        + str(g.get_path_len(player))
-                        + "pos = "
-                        + str(self.state.pl_pos[player.index]),
-                        file=sys.stderr,
-                        flush=True,
-                    )
                     g.state.take_turn(player, t)
                     # Call minimax recursively and choose
                     # the maximum value
-                    print(
-                        "after turn:"
-                        + str(t)
-                        + " pathlen =:"
-                        + str(g.get_path_len(player))
-                        + "pos = "
-                        + str(self.state.pl_pos[player.index]),
-                        file=sys.stderr,
-                        flush=True,
-                    )
                     best = max(
                         best,
                         self.minimax(
@@ -420,6 +417,11 @@ class game:
 
             # Traverse all move options
             for t in best_turns(player):
+                print(
+                    "If oppo move " + str(depth) + " is " + str(t),
+                    file=sys.stderr,
+                    flush=True,
+                )
                 # Check if t is valid
                 if is_valid_turn(t, player):
                     # Make the move
@@ -440,7 +442,7 @@ class game:
 
     # This will return the best possible move for the player
     def findBestMove(self, player):
-        bestVal: int = -1000
+        bestVal: int = -1000000
         bestMove = -1
 
         # Traverse all cells, evaluate minimax function for
@@ -448,12 +450,19 @@ class game:
         # value.
         for t in best_turns(player):
             # Check if t is valid
+            print(
+                "Trying" + str(t),
+                file=sys.stderr,
+                flush=True,
+            )
             if is_valid_turn(t, player):
                 # Make the move
                 g.state.take_turn(player, t)
                 # compute evaluation function for this
                 # move.
-                moveVal = self.minimax(0, player)
+                moveVal = self.minimax(
+                    0, g.state.players[(player.index + 1) % player_count]
+                )
                 print(
                     "score for " + str(t) + " is:" + str(moveVal),
                     file=sys.stderr,
@@ -481,13 +490,17 @@ class game:
         pl_dist = 0
         for pl in self.state.players:
             dist = self.get_path_len(pl)
-            # print("dist for pl "+str(pl.index)+" is:"+str(dist), file=sys.stderr, flush=True)
+            print(
+                "dist for pl " + str(pl.index) + " is:" + str(dist),
+                file=sys.stderr,
+                flush=True,
+            )
             if pl.index != my_id and dist == -1:
                 # opponnent wins
 
                 gscore += -100000
                 break
-            if pl.index == player.index and dist == -1:
+            if pl.index == my_id and dist == -1:
                 # player wins
 
                 gscore += 100000
@@ -1264,8 +1277,8 @@ def best_turns(player):
     turns.append(move(-1, 0))
     if player.walls:
         # turns.extend(g.state.touching_walls())
-        # turns.extend(g.state.touching_players())
-        pass
+        turns.extend(g.state.touching_players())
+
     unique_turns = list(set(turns))
 
     return unique_turns
