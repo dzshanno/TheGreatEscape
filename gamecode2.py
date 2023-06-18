@@ -1,5 +1,4 @@
 import sys
-import math
 import numpy
 import time
 
@@ -47,6 +46,36 @@ class state:
         self.pl_wall = [0, 0, 0]
         self.walls = []
         self.players = []
+
+    def is_valid_turn(self, pl, t):
+        if isinstance(t, str):
+            t = text_to_turn(t)
+        valid = False
+        if isinstance(t, wall):
+            valid = g.valid_wall(t)
+        if isinstance(t, move):
+            valid = g.valid_move(pl.position, t)
+        return valid
+
+    def take_turn(self, pl, t):
+        if isinstance(t, str):
+            t = text_to_turn(t)
+        if isinstance(t, wall):
+            self.set_wall(t)
+        elif isinstance(t, move):
+            self.move_player(pl, t)
+        else:
+            print(
+                "did not understand move:" + str(type(t)), file=sys.stderr, flush=True
+            )
+
+    def undo_turn(self, pl, t):
+        if isinstance(t, str):
+            t = text_to_turn(t)
+        if isinstance(t, wall):
+            self.set_wall(t)
+        if isinstance(t, move):
+            self.unmove_player(pl, t)
 
     def set_wall(self, wall):
         pos = wall.x + (wall.y * w)
@@ -190,15 +219,12 @@ class game:
         valid = True
         if not self.wall_inbounds(new_wall):
             valid = False
-            print("wall out of bounbds", file=sys.stderr, flush=True)
         elif not self.no_wall_overlap(new_wall):
             valid = False
-            print("wall overlap", file=sys.stderr, flush=True)
         else:
             self.state.set_wall(new_wall)
             if not self.no_block_in(new_wall):
                 valid = False
-                print("wall causes block in", file=sys.stderr, flush=True)
             self.state.reset_wall(new_wall)
 
         return valid
@@ -292,14 +318,10 @@ class game:
 
     def get_path_len(self, pl):
         pos = self.state.pl_pos[pl.index]
-        print(
-            "pos of: " + str(pl.index) + " = " + str(pos), file=sys.stderr, flush=True
-        )
         # make sure the person is still playing
         if pos > -1:
             # check for win condition
             if check_bit(self.pl_won[pl.index], pos):
-                print(str(bin(self.pl_won[pl.index])), file=sys.stderr, flush=True)
                 return -1
             self.depth = +1
             win = self.pl_won[pl.index]
@@ -324,76 +346,173 @@ class game:
                 dist += 1
         return -111
 
-    def best_move(self, player):
-        best_score = -10000
-        best_move = None
+    # This is the minimax function. It considers all
+    # the possible ways the game can go and returns
+    # the value of the board
+    def minimax(self, depth: int, player):
+        max_depth = 3
+        score = g.game_score(player)
 
+        isMax = False
+        if player.index == my_id:
+            isMax = True
+        # If Maximizer has won the game return his/her
+        # evaluated score
+        if score == 100000:
+            return score
+
+        # If Minimizer has won the game return his/her
+        # evaluated score
+        if score == -100000:
+            return score
+
+        if depth == max_depth:
+            # print("score from minimax is:"+str(score), file=sys.stderr, flush=True)
+            return score
+
+        # If this maximizer's move
+        if isMax:
+            best = -100000
+
+            # Traverse all move options
+            for t in best_turns(player):
+                # Check if t is valid
+                if is_valid_turn(t, player):
+                    # Make the move
+                    print(
+                        "before turn:"
+                        + str(t)
+                        + " pathlen =:"
+                        + str(g.get_path_len(player))
+                        + "pos = "
+                        + str(self.state.pl_pos[player.index]),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    g.state.take_turn(player, t)
+                    # Call minimax recursively and choose
+                    # the maximum value
+                    print(
+                        "after turn:"
+                        + str(t)
+                        + " pathlen =:"
+                        + str(g.get_path_len(player))
+                        + "pos = "
+                        + str(self.state.pl_pos[player.index]),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    best = max(
+                        best,
+                        self.minimax(
+                            depth + 1,
+                            g.state.players[(player.index + 1) % player_count],
+                        ),
+                    )
+
+                    # Undo the move
+                    g.state.undo_turn(player, t)
+            return best
+
+        # If this minimizer's move
+        else:
+            best = 10000
+
+            # Traverse all move options
+            for t in best_turns(player):
+                # Check if t is valid
+                if is_valid_turn(t, player):
+                    # Make the move
+                    g.state.take_turn(player, t)
+                    # Call minimax recursively and choose
+                    # the minimum value
+                    best = min(
+                        best,
+                        self.minimax(
+                            depth + 1,
+                            g.state.players[(player.index + 1) % player_count],
+                        ),
+                    )
+
+                    # Undo the move
+                    g.state.undo_turn(player, t)
+            return best
+
+    # This will return the best possible move for the player
+    def findBestMove(self, player):
+        bestVal: int = -1000
+        bestMove = -1
+
+        # Traverse all cells, evaluate minimax function for
+        # all empty cells. And return the cell with optimal
+        # value.
         for t in best_turns(player):
-            print("", file=sys.stderr, flush=True)
-            print("move: " + str(t), file=sys.stderr, flush=True)
+            # Check if t is valid
             if is_valid_turn(t, player):
-                print("Valid turn", file=sys.stderr, flush=True)
-                if isinstance(t, wall):
-                    g.state.set_wall(t)
-                    new_score = g.game_score(me)
-                    print("score: " + str(new_score), file=sys.stderr, flush=True)
-                    if new_score > best_score:
-                        best_score = new_score
-                        best_move = t
-                    g.state.reset_wall(t)
-                if isinstance(t, move):
-                    g.state.move_player(player, t)
-                    new_score = g.game_score(me)
-                    print("score: " + str(new_score), file=sys.stderr, flush=True)
-                    if new_score > best_score:
-                        best_score = new_score
-                        best_move = t
-                    g.state.unmove_player(player, t)
-            else:
-                print("not valid turn", file=sys.stderr, flush=True)
+                # Make the move
+                g.state.take_turn(player, t)
+                # compute evaluation function for this
+                # move.
+                moveVal = self.minimax(0, player)
+                print(
+                    "score for " + str(t) + " is:" + str(moveVal),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                # Undo the move
+                g.state.undo_turn(player, t)
 
-        return best_move
+                # If the value of the current move is
+                # more than the best value, then update
+                # best/
+                if moveVal > bestVal:
+                    bestMove = t
+                    bestVal = moveVal
+        return bestMove
 
-    def game_score(self, pl):
-        a = -5
-        b = 5
+    def game_score(self, player):
+        a = -1
+        b = 1
         c = 1
         d = -1
         e = -1
-        score = 0
-        oppo_dist = 100
-        pl_dist = 100
+        gscore = 0
+        oppo_dist = 0
+        pl_dist = 0
         for pl in self.state.players:
             dist = self.get_path_len(pl)
+            # print("dist for pl "+str(pl.index)+" is:"+str(dist), file=sys.stderr, flush=True)
             if pl.index != my_id and dist == -1:
                 # opponnent wins
-                print("player has won", file=sys.stderr, flush=True)
-                score += -111111
+
+                gscore += -100000
                 break
-            if pl.index == my_id and dist == -1:
-                # I win
-                print("I have win", file=sys.stderr, flush=True)
-                score += 99999999
+            if pl.index == player.index and dist == -1:
+                # player wins
+
+                gscore += 100000
             if dist == -11:
                 # no valid moves
-                print("no valid path", file=sys.stderr, flush=True)
-                score += -22222
+
+                gscore += -22222
                 break
             if pl.index == my_id:
                 pl_dist = dist
-                print("pl dist = : " + str(pl_dist), file=sys.stderr, flush=True)
+
             elif pl.walls != -1:
                 oppo_dist += dist
-                print("oppo dist = : " + str(oppo_dist), file=sys.stderr, flush=True)
 
         # add a * the difference in length of path to victory for the best opponent
-        score += a * pl_dist
-        score += b * (oppo_dist / (player_count - 1))
+        # print("gscore 1 is:"+str(gscore), file=sys.stderr, flush=True)
+        gscore += a * pl_dist
+        # print("gscore 2 is:"+str(gscore), file=sys.stderr, flush=True)
+        # print("oppo dist is:"+str(oppo_dist), file=sys.stderr, flush=True)
+        gscore += b * (oppo_dist / (player_count - 1))
         # score += c * pl.walls
         # score += d * min(oppo_walls)
         # score += e * self.walls_ahead(pl)
-        # print("score after that move is"+ str(score), file=sys.stderr, flush=True)
-        return score
+        # print("gscore 3 is:"+str(gscore), file=sys.stderr, flush=True)
+        return gscore
 
 
 class position:
@@ -499,7 +618,7 @@ class grid:
         self.players[i].move_back(m)
 
     # how do we score a grid
-    def grid_score(self, pl):
+    def grid_score(self, player):
         a = -5
         b = 5
         c = 1
@@ -515,14 +634,14 @@ class grid:
                 # wall causes a block in
                 score += -10000
                 break
-            if pl.index == my_id:
+            if pl.index == player.index:
                 pl_dist = dist
             elif len(path) < oppo_dist:
                 oppo_dist = dist
 
         # add a * the difference in length of path to victory for the best opponent
         score += a * pl_dist
-        score += b * (oppo_dist - 1)
+        score += b * (oppo_dist)
         # score += c * pl.walls
         # score += d * min(oppo_walls)
         # score += e * self.walls_ahead(pl)
@@ -1126,107 +1245,6 @@ def blocks(current, to):
     return blocks
 
 
-# This is the minimax function. It considers all
-# the possible ways the game can go and returns
-# the value of the board
-def minimax(grid, depth, player):
-    max_depth = 3
-    score = grid.grid_score(player)
-    isMax = False
-    if player.index == my_id:
-        isMax = True
-    # If Maximizer has won the game return his/her
-    # evaluated score
-    if score == 1000:
-        return score
-
-    # If Minimizer has won the game return his/her
-    # evaluated score
-    if score == -1000:
-        return score
-
-    if depth == max_depth:
-        return score
-
-    # If this maximizer's move
-    if isMax:
-        best = -10000
-
-        # Traverse all move options
-        for t in all_turns():
-            # Check if t is valid
-            if is_valid_turn(t):
-                # Make the move
-                grid.take_turn(t, player)
-                # Call minimax recursively and choose
-                # the maximum value
-                best = max(
-                    best,
-                    minimax(
-                        grid, depth + 1, grid.players[player.index + 1 % player_count]
-                    ),
-                )
-
-                # Undo the move
-                grid.undo_turn(t, player)
-        return best
-
-    # If this minimizer's move
-    else:
-        best = 10000
-
-        # Traverse all move options
-        for t in all_turns():
-            # Check if t is valid
-            if is_valid_turn(t):
-                # Make the move
-                grid.take_turn(t, player)
-                # Call minimax recursively and choose
-                # the maximum value
-                best = min(
-                    best,
-                    minimax(
-                        grid, depth + 1, grid.players[player.index + 1 % player_count]
-                    ),
-                )
-
-                # Undo the move
-                grid.undo_turn(t, player)
-        return best
-
-
-# This will return the best possible move for the player
-def findBestMove(grid):
-    bestVal = -1000
-    bestMove = -1
-
-    # Traverse all cells, evaluate minimax function for
-    # all empty cells. And return the cell with optimal
-    # value.
-    for t in all_turns():
-        # Check if t is valid
-        if is_valid_turn(t):
-            # Make the move
-            grid.take_turn(t, player)
-            # compute evaluation function for this
-            # move.
-            moveVal = minimax(grid, 0, False)
-
-            # Undo the move
-            grid.undo_turn(t, player)
-
-            # If the value of the current move is
-            # more than the best value, then update
-            # best/
-            if moveVal > bestVal:
-                bestMove = t
-                bestVal = moveVal
-
-    # print("The value of the best Move is :", bestVal)
-    # print()
-    return bestMove
-
-
 def is_valid_turn(t, p: player):
     if isinstance(t, str):
         t = text_to_turn(t)
@@ -1245,9 +1263,9 @@ def best_turns(player):
     turns.append(move(1, 0))
     turns.append(move(-1, 0))
     if player.walls:
-        turns.extend(g.state.touching_walls())
-        turns.extend(g.state.touching_players())
-
+        # turns.extend(g.state.touching_walls())
+        # turns.extend(g.state.touching_players())
+        pass
     unique_turns = list(set(turns))
 
     return unique_turns
@@ -1376,6 +1394,7 @@ while True:
     oppo = g.state.players[oppo_id]
 
     # setup for each turn
+
     if game_turn < 3 and player_count == 2:
         if oppo.position in [
             position(1, 7),
@@ -1409,8 +1428,6 @@ while True:
         if oppo.position in [position(0, 3), position(1, 3)]:
             strategy = "3"
         # if me.position in [position(0,0)]: strategy = "p0"
-
-    print("Strategy =" + str(strategy), file=sys.stderr, flush=True)
 
     if strategy == "78":
         if strategy_78:
@@ -1504,49 +1521,6 @@ while True:
             strategy = ""
 
     if strategy == "" or output == "":
-        print("UP", file=sys.stderr, flush=True)
-        for i in range(0, 81, 9):
-            print(
-                str(bin(g.state.con[0]))[-i - 1 : -i - 10 : -1],
-                end=" ",
-                file=sys.stderr,
-                flush=True,
-            )
-            print("", file=sys.stderr, flush=True)
-        print("RIGHT", file=sys.stderr, flush=True)
-        for i in range(0, 81, 9):
-            print(
-                str(bin(g.state.con[1]))[-i - 1 : -i - 10 : -1],
-                end=" ",
-                file=sys.stderr,
-                flush=True,
-            )
-            print("", file=sys.stderr, flush=True)
-        print("DOWN", file=sys.stderr, flush=True)
-        for i in range(0, 81, 9):
-            print(
-                str(bin(g.state.con[2]))[-i - 1 : -i - 10 : -1],
-                end=" ",
-                file=sys.stderr,
-                flush=True,
-            )
-            print("", file=sys.stderr, flush=True)
-        print("LEFT", file=sys.stderr, flush=True)
-        for i in range(0, 81, 9):
-            print(
-                str(bin(g.state.con[3]))[-i - 1 : -i - 10 : -1],
-                end=" ",
-                file=sys.stderr,
-                flush=True,
-            )
-            print("", file=sys.stderr, flush=True)
-        print("", file=sys.stderr, flush=True)
-
-        output = turn_to_text(g.best_move(me))
-
-        ## TODO allow for if you are player 0,1,2 to account for if this should be > or >=
-
-        end = time.process_time() - start
-        # print("time for this round"+ str(end), file=sys.stderr, flush=True)
+        output = turn_to_text(g.findBestMove(me))
 
     print(output)
